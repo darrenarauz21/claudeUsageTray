@@ -105,9 +105,11 @@ dotnet build ClaudeUsage.Avalonia -c Release            # Linux y macOS (corre t
 python herramientas/empaquetar.py                       # los paquetes de los tres sistemas en paquetes/
 ```
 
-`empaquetar.py` (solo biblioteca estándar) genera `paquetes/windows/ClaudeUsageTray.exe`,
-`UsoDeClaude-linux-x64-<versión>.tar.gz` y `UsoDeClaude-macos-{arm64,x64}-<versión>.zip`, con los
-permisos de ejecución y el ícono de cada sistema. Todos son autocontenidos: no piden instalar .NET.
+`empaquetar.py` (solo biblioteca estándar) genera en `paquetes/` `UsoDeClaude-windows-x64.exe`,
+`UsoDeClaude-linux-x64.tar.gz` y `UsoDeClaude-macos-{arm64,x64}.zip`, con los permisos de ejecución
+y el ícono de cada sistema. Todos son autocontenidos: no piden instalar .NET. Los nombres no llevan
+versión porque el README enlaza a `releases/latest/download/<archivo>`: en cada versión se crea una
+Release en GitHub (etiqueta `vX.Y.Z`) y se adjuntan esos cuatro archivos con el mismo nombre.
 En Linux la app lleva su propia ICU (no todas las distribuciones la traen). En macOS no se puede
 firmar desde Windows: `preparar-mac.sh` la firma solo para ese equipo (`codesign --sign -`) y le
 quita la cuarentena.

@@ -14,20 +14,31 @@ de Claude Code.
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.
 
-## Instalar
+## Descargar
 
-Descargue el archivo de su sistema desde la carpeta de paquetes y siga los pasos.
+| Sistema | Archivo |
+|---|---|
+| Windows 10 y 11 | [UsoDeClaude-windows-x64.exe](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-windows-x64.exe) |
+| macOS con chip Apple (M1, M2, M3…) | [UsoDeClaude-macos-arm64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-arm64.zip) |
+| macOS con Intel | [UsoDeClaude-macos-x64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-x64.zip) |
+| Linux (x64) | [UsoDeClaude-linux-x64.tar.gz](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-linux-x64.tar.gz) |
+
+Los enlaces descargan siempre la última versión; todas están en
+[Releases](https://github.com/darrenarauz21/claudeUsageTray/releases). No hace falta instalar nada
+más: cada archivo trae todo lo que necesita.
+
+## Instalar
 
 ### Windows
 
-1. Guarde `ClaudeUsageTray.exe` en una carpeta fija, por ejemplo `Documentos\Uso de Claude`.
-2. Ábralo con doble clic.
+1. Guarde `UsoDeClaude-windows-x64.exe` en una carpeta fija, por ejemplo `Documentos\Uso de Claude`.
+2. Ábralo con doble clic. Si Windows muestra «Windows protegió su PC», pulse **Más información** y
+   luego **Ejecutar de todas formas** (la app no está firmada).
 3. Busque el ícono naranja junto al reloj. Si no aparece, está en la flechita **^**.
 
 ### macOS
 
-1. Descomprima `UsoDeClaude-macos-arm64-<versión>.zip` (Mac con chip Apple: M1, M2, M3…) o
-   `UsoDeClaude-macos-x64-<versión>.zip` (Mac con Intel).
+1. Descomprima el `.zip` que descargó (doble clic).
 2. Abra la app **Terminal**, escriba `sh ` (con un espacio), arrastre el archivo
    `preparar-mac.sh` a la ventana y pulse Enter.
 3. La app queda en **Aplicaciones** y se abre sola: búsquela arriba a la derecha, en la barra de
@@ -39,7 +50,7 @@ siempre**.
 
 ### Linux
 
-1. Descomprima el archivo: `tar -xzf UsoDeClaude-linux-x64-<versión>.tar.gz`
+1. Descomprima el archivo: `tar -xzf UsoDeClaude-linux-x64.tar.gz`
 2. Entre en la carpeta y ejecute: `sh instalar.sh`
 3. Busque el ícono en la bandeja. También queda en el menú de aplicaciones.
 

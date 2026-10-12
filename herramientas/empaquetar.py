@@ -1,5 +1,10 @@
 """Genera los paquetes de Uso de Claude para Windows, Linux y macOS en paquetes/.
 
+Los nombres no llevan versión, para que los enlaces del README a la última Release
+(releases/latest/download/<archivo>) sigan sirviendo en cada versión nueva:
+UsoDeClaude-windows-x64.exe, UsoDeClaude-linux-x64.tar.gz, UsoDeClaude-macos-arm64.zip y
+UsoDeClaude-macos-x64.zip.
+
     python herramientas/empaquetar.py            los tres sistemas
     python herramientas/empaquetar.py linux mac  solo los indicados
 
@@ -98,17 +103,18 @@ def add_zip(archive, name, data, mode):
 
 
 def windows():
-    target = os.path.join(OUT, "windows")
-    shutil.rmtree(target, ignore_errors=True)
-    publish(WINDOWS, "win-x64", target, single_file=True)
-    print(f"  listo: paquetes/windows/ClaudeUsageTray.exe")
+    staging = os.path.join(WORK, "win-x64")
+    shutil.rmtree(staging, ignore_errors=True)
+    publish(WINDOWS, "win-x64", staging, single_file=True)
+    shutil.copyfile(os.path.join(staging, "ClaudeUsageTray.exe"), os.path.join(OUT, "UsoDeClaude-windows-x64.exe"))
+    print("  listo: paquetes/UsoDeClaude-windows-x64.exe")
 
 
 def linux():
     staging = os.path.join(WORK, "linux-x64")
     shutil.rmtree(staging, ignore_errors=True)
     publish(AVALONIA, "linux-x64", staging, single_file=True)
-    name = f"UsoDeClaude-linux-x64-{VERSION}"
+    name = "UsoDeClaude-linux-x64"
     path = os.path.join(OUT, name + ".tar.gz")
     with tarfile.open(path, "w:gz") as tar:
         with open(os.path.join(staging, "UsoDeClaude"), "rb") as h:
@@ -125,7 +131,7 @@ def mac(rid):
     # En macOS no es un solo archivo: así codesign firma cada biblioteca dentro del .app.
     publish(AVALONIA, rid, staging, single_file=False)
     app = "Uso de Claude.app"
-    name = f"UsoDeClaude-macos-{rid.split('-')[1]}-{VERSION}"
+    name = f"UsoDeClaude-macos-{rid.split('-')[1]}"
     plist = text("Info.plist").replace("{VERSION}", VERSION)
     path = os.path.join(OUT, name + ".zip")
     with zipfile.ZipFile(path, "w") as archive:
