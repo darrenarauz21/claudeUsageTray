@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationDefaultFont>Segoe UI, 9pt</ApplicationDefaultFont>
+    <AssemblyName>ClaudeUsageTray</AssemblyName>
+    <RootNamespace>ClaudeUsageTray</RootNamespace>
+    <Version>1.0.0</Version>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyTitle>Uso de Claude</AssemblyTitle>
+    <Product>Uso de Claude</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- La app de Linux y macOS tiene su propio proyecto; aquí solo entra Core/. -->
+    <Compile Remove="ClaudeUsage.Avalonia/**" />
+    <None Remove="ClaudeUsage.Avalonia/**" />
+    <EmbeddedResource Remove="ClaudeUsage.Avalonia/**" />
+  </ItemGroup>
+
+</Project>
