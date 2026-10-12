@@ -1,179 +1,74 @@
-# Uso de Claude (bandeja del sistema)
+# Uso de Claude
 
-Ícono en la bandeja de Windows con el uso de las cuentas de Claude. Muestra el porcentaje de la
-sesión actual (5 h) de la cuenta elegida. Al hacer clic se abre una ventana con tres vistas:
+Una pequeña app que vive junto al reloj (en la bandeja de Windows o Linux, o en la barra de menús
+de Mac) y le muestra, de un vistazo, cuánto le queda de Claude y qué están haciendo sus sesiones
+de Claude Code.
 
-- **Uso**: un botón por cuenta y, para la elegida, la sesión (5 h), la semana y la semana por
-  modelo, con su barra y cuándo reinicia.
-- **Sesiones**: las sesiones de Claude Code abiertas en este equipo, de todas las cuentas.
-- **Actividad**: mapa de calor de los últimos 6 meses, como el de `/stats` en Claude Code.
-- Al pie, los tokens de hoy en este equipo, leídos de los registros `.jsonl` de Claude Code.
+- **Uso:** el porcentaje de su sesión de 5 horas y de la semana, por cuenta, y cuándo se reinicia.
+- **Sesiones:** qué sesiones de Claude Code tiene abiertas y si están trabajando, esperando su
+  respuesta o ya terminaron.
+- **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
+- **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
+  necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
 
-Al actualizar (a mano o cada 5 minutos), la mascota de Claude ocupa el ícono y la hora del pie: abre los ojos, mira a los lados mientras llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
+Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
+contraseñas ni el texto de sus conversaciones.
 
-## Sesiones
+## Instalar
 
-| Estado | Señal | De dónde sale |
-|---|---|---|
-| Trabajando | asterisco animado y barra con destello | `status: busy` en `sessions/<pid>.json` |
-| Esperando su respuesta | punto ámbar que late | una pregunta (`AskUserQuestion`) sin responder |
-| Terminó | marca verde, «hace 5 min · 2 min 25 s» | `status: idle` y el último turno hace menos de 30 min |
-| Inactiva | punto gris, agrupadas y plegadas | `status: idle` desde hace más de 30 min |
+Descargue el archivo de su sistema desde la carpeta de paquetes y siga los pasos.
 
-Mientras trabaja, la sesión muestra lo que está haciendo («Ejecutando · …», «Editando · archivo»),
-los pasos del turno y el tiempo transcurrido. Si la sesión usa una lista de tareas (`TodoWrite`),
-la barra pasa a «3 de 5 tareas». El título es el que Claude Code genera para la sesión.
+### Windows
 
-Clic en una sesión: despliega el último pedido, la carpeta y las interacciones. Clic derecho:
-abrir la carpeta del proyecto o copiar el ID de la sesión. Solo se cuentan los procesos vivos.
-Las sesiones se leen cada 1,5 s mientras la ventana está abierta; cerrada, no se lee nada.
+1. Guarde `ClaudeUsageTray.exe` en una carpeta fija, por ejemplo `Documentos\Uso de Claude`.
+2. Ábralo con doble clic.
+3. Busque el ícono naranja junto al reloj. Si no aparece, está en la flechita **^**.
 
-## Avisos
+### macOS
 
-Un aviso entra por la derecha, abajo, con la mascota de Claude según el caso. Se encienden y se
-apagan con la campana de la ventana o con **Notificaciones** en el menú del ícono. Un clic en
-el aviso abre la ventana en esa sesión o en esa cuenta; **Ver un aviso de ejemplo** muestra el
-siguiente de cada tipo con cada clic.
+1. Descomprima `UsoDeClaude-macos-arm64-<versión>.zip` (Mac con chip Apple: M1, M2, M3…) o
+   `UsoDeClaude-macos-x64-<versión>.zip` (Mac con Intel).
+2. Abra la app **Terminal**, escriba `sh ` (con un espacio), arrastre el archivo
+   `preparar-mac.sh` a la ventana y pulse Enter.
+3. La app queda en **Aplicaciones** y se abre sola: búsquela arriba a la derecha, en la barra de
+   menús.
 
-| Aviso | Cuándo | Mascota | Se va solo |
-|---|---|---|---|
-| Terminó | la sesión cierra su turno (`turn_duration`) | celebra con la burbuja verde | a los 6 s |
-| Le está preguntando | queda una `AskUserQuestion` sin responder | piensa, con burbuja de diálogo | no |
-| Necesita su permiso | Claude Code pide permiso para una herramienta (hook) | mira el candado | no |
-| Falló | error de la API ya sin reintentos (`isApiErrorMessage`) | mareada, con el círculo rojo | no |
-| Reintentando | van 3 reintentos por error de la API | mira a los lados, con flechas | a los 6 s |
-| Se cerró mientras trabajaba | el proceso terminó con la sesión trabajando | duerme | no |
-| Uso al 80 % / 95 % | la sesión de 5 h o la semana cruzan ese umbral | suda / entre llamas | a los 6 s |
-| Límite reiniciado | un límite que estaba en 95 % o más vuelve a bajar | celebra | a los 6 s |
-| Sesión vencida | el token de una cuenta venció | burbuja «!» | no |
+El paso 2 se hace una sola vez: la app no está firmada por Apple, y el script la autoriza solo
+para su Mac. Si macOS pregunta si permite leer «Claude Code-credentials», elija **Permitir
+siempre**.
 
-Con el mouse encima, ningún aviso se va. Se apilan hasta cuatro. Al arrancar o al encender las
-notificaciones no se avisa de lo que ya había pasado. Con las notificaciones encendidas, las
-sesiones se leen cada 3 s aunque la ventana esté cerrada; apagadas, solo con la ventana abierta.
+### Linux
 
-**Permisos.** Que una sesión espere su permiso no queda en el registro: lo cuenta el hook
-`Notification` de Claude Code. Para recibirlo, la configuración de cada cuenta
-(`settings.json` de su carpeta) necesita este hook, que guarda el evento en
-`%APPDATA%\ClaudeUsageTray\events.jsonl` y termina:
+1. Descomprima el archivo: `tar -xzf UsoDeClaude-linux-x64-<versión>.tar.gz`
+2. Entre en la carpeta y ejecute: `sh instalar.sh`
+3. Busque el ícono en la bandeja. También queda en el menú de aplicaciones.
 
-```json
-{
-  "hooks": {
-    "Notification": [
-      { "hooks": [ { "type": "command", "command": "\"C:\\ruta\\a\\ClaudeUsageTray.exe\" --hook" } ] }
-    ]
-  }
-}
-```
+Si falta algo en su sistema, el instalador le dice qué y cómo instalarlo. En GNOME, el ícono de
+la bandeja necesita la extensión «AppIndicator» (en Ubuntu ya viene activada).
 
-### Sonido
+## La primera vez
 
-Cada aviso suena según el caso: contento si terminó, como pregunta si le pregunta, dos golpecitos
-si pide permiso y triste si falló. Hay dos estilos generados por la app, **Clásico** (una vocecita)
-y **Risitas** (risitas cortas y agudas), que se eligen en **Estilo de sonido** del menú del ícono;
-**Sonido** lo enciende y lo apaga. Si salen varios avisos juntos, suena uno.
+Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar**:
 
-Los sonidos están en `%APPDATA%\ClaudeUsageTray\sonidos` (**Abrir carpeta de sonidos**), con los
-nombres `terminado`, `pregunta`, `permiso`, `fallo`, `uso` y `aviso`:
+- **Avisos de permisos:** para avisarle cuando Claude Code espere su permiso. Toca la
+  configuración de Claude Code, pero antes guarda una copia.
+- **Iniciar con el sistema:** para que se abra sola al encender el equipo.
+- **Mostrar notificaciones.**
 
-- `clasico\` y `risitas\`: los de la app. Si se borra uno, se vuelve a crear.
-- `propios\`: un archivo con el mismo nombre (`.wav` o `.mp3`) suena en lugar del estilo elegido; si
-  hay los dos, manda el más reciente.
+## Cómo se usa
 
-## Actividad
+- **Clic en el ícono:** abre la ventana. Arriba elige **Uso**, **Sesiones** o **Actividad**.
+- **El número del ícono** es el porcentaje de su sesión de 5 horas.
+- **Clic en un aviso:** abre la sesión o la cuenta de la que habla.
+- **Menú del ícono** (clic derecho; en Mac, clic): actualizar, agregar otra cuenta, encender o
+  apagar notificaciones y sonido, elegir el estilo de sonido, ver un aviso de ejemplo y salir.
 
-Una casilla por día; el color sube con los tokens de ese día (entrada + escritura en caché +
-salida; las lecturas de caché no cuentan). Los cuatro tonos se reparten por cuartiles de los
-días con actividad. Al pasar el mouse por un día se ven sus tokens y respuestas. Debajo: tokens
-del período, días activos, racha actual y más larga, día más activo y modelo favorito.
+## Si algo no funciona
 
-Sale de los `.jsonl` de Claude Code de este equipo (no incluye claude.ai ni otros equipos, y no
-se separa por cuenta cuando el historial es compartido). Como Claude Code borra los registros
-de más de 30 días, la app guarda un resumen por día en `%APPDATA%\ClaudeUsageTray\history.json`
-(solo cifras, sin texto de las conversaciones) y lo actualiza en cada consulta, aunque la ventana
-esté cerrada.
+- **No salen avisos:** use **Copiar diagnóstico** en el menú del ícono y compártalo con quien le
+  pasó la app.
+- **Dice «Sesión vencida»:** abra Claude Code con esa cuenta y se arregla sola.
+- **Para quitarla:** use **Quitar configuración…** en el menú y después borre la app.
 
-## Cuentas
-
-Cada cuenta es una carpeta de configuración de Claude Code (la de `CLAUDE_CONFIG_DIR`). Se
-detectan solas las carpetas `~/.claude*` que tienen `.credentials.json`. Para agregar otra,
-use el botón **+**, o **Agregar cuenta…** en el menú del ícono. Con clic derecho sobre una
-cuenta se puede renombrar, abrir la carpeta o quitarla de la lista.
-
-La configuración vive en `%APPDATA%\ClaudeUsageTray\settings.json`.
-
-## Compartir
-
-Para otros equipos, la versión autocontenida trae su propio .NET y no pide instalar nada:
-
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o dist-compartir
-```
-
-Se comparte solo `dist-compartir\ClaudeUsageTray.exe` (~70 MB). Conviene guardarlo en una carpeta
-fija antes de abrirlo (por ejemplo `Documentos\Uso de Claude`), porque el hook apunta a esa ruta.
-
-## Configuración
-
-La primera vez que se abre, la app muestra **Configuración**: el hook de avisos de permisos en el
-`settings.json` de cada carpeta de Claude Code, **Iniciar con Windows** y las notificaciones. Nada
-cambia sin **Aplicar**. Antes de tocar un `settings.json` se guarda un respaldo junto a él
-(`settings.json.respaldo-AAAAMMDD-HHMMSS`); se respeta el resto del archivo y los otros hooks, y
-si el JSON tiene errores no se toca. Nada de esto pide permisos de administrador.
-
-Si la app cambia de lugar, al abrirla detecta que el hook apunta a la ruta vieja y vuelve a
-proponerlo. **Configurar…** abre el asistente cuando se quiera y **Quitar configuración…** saca
-el hook y el inicio con Windows (para antes de borrar la app).
-
-## Compilar y ejecutar
-
-```powershell
-dotnet build -c Release
-dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist
-.\dist\ClaudeUsageTray.exe
-```
-
-Para que arranque con Windows, marque **Iniciar con Windows** en el menú del ícono. Eso escribe
-en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
-
-Opciones:
-
-- `--show`: abre la ventana al arrancar.
-- `--preview`: como `--show`, pero aunque ya haya otra instancia abierta (para probar cambios).
-- `--sessions`: abre en la vista de sesiones.
-- `--setup`: con `--preview`, muestra también el asistente de configuración.
-- `--activity`: abre en la vista de actividad.
-- `--demo`: muestra un aviso de cada tipo.
-- `--hook`: modo hook de Claude Code; lee el evento por la entrada estándar y lo guarda.
-- `--diag`: escribe el diagnóstico (lo mismo que **Copiar diagnóstico** en el menú).
-- `--dump`: hace una consulta, escribe el resultado en la salida estándar y termina. Sirve para
-  comprobar sin abrir la bandeja: `Start-Process .\dist\ClaudeUsageTray.exe --dump -Wait -NoNewWindow -RedirectStandardOutput out.txt`.
-
-## Si en otro equipo no salen avisos
-
-**Copiar diagnóstico**, en el menú del ícono, copia un resumen sin correos ni tokens: versiones de
-la app, Windows, .NET y Claude Code; si las notificaciones están encendidas; y cada carpeta
-`~/.claude*` con sus credenciales, sesiones registradas y vivas, y si tiene el hook. Lo habitual:
-
-- No arranca: falta el **.NET 8 Desktop Runtime**.
-- «credenciales no»: la app no ve la cuenta y no lee sus sesiones.
-- «sin carpeta sessions»: esa versión de Claude Code no registra el estado de las sesiones.
-- «sin hook»: no habrá avisos de permisos.
-
-## Límites conocidos
-
-- Los porcentajes salen de `https://api.anthropic.com/api/oauth/usage`, el mismo endpoint que
-  usa `/usage` en Claude Code. **No está documentado**: si cambia, la cuenta muestra el error
-  y se mantienen los últimos datos buenos.
-- La app lee el token de `.credentials.json` y **no lo renueva**, para no pisar la sesión de
-  Claude Code. Si una cuenta no se usa en horas, su token vence y la ventana pide abrir Claude
-  Code con esa cuenta.
-- Los tokens locales son los de este equipo, no los de la cuenta. Si dos carpetas comparten
-  `projects` (por ejemplo, con un junction), se cuentan una sola vez y no se separan por cuenta.
-- Se consulta cada 5 minutos (`RefreshMinutes` en `settings.json`) y al abrir la ventana si
-  pasó más de 1 minuto.
-- El estado de las sesiones sale de archivos internos de Claude Code, que no están documentados:
-  una versión nueva puede cambiarlos.
-- Windows 11 deja los íconos nuevos en el desbordamiento (^). Para tenerlo siempre a la vista:
-  Configuración > Personalización > Barra de tareas > Otros íconos de la bandeja del sistema.
+Los detalles técnicos (de dónde sale cada dato, cómo compilarla y empaquetarla) están en
+[DETALLES.md](DETALLES.md).

@@ -1,0 +1,13 @@
+Uso de Claude para macOS
+
+1. Abra la app Terminal.
+2. Escriba  sh  y un espacio, arrastre el archivo preparar-mac.sh a la ventana y pulse Enter.
+3. La app queda en Aplicaciones y se abre sola: búsquela en la barra de menús, arriba a la derecha.
+
+Ese paso se hace una sola vez. La app no está firmada por Apple, y el script la firma solo para su
+Mac; sin él, macOS no la deja abrir.
+
+La app lee el uso de su cuenta de Claude Code y le avisa cuando una sesión termina, le pregunta
+algo o falla. Necesita tener Claude Code instalado y con la sesión iniciada. La primera vez,
+macOS puede preguntar si permite leer «Claude Code-credentials» del Llavero: elija «Permitir
+siempre».

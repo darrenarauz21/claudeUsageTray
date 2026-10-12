@@ -1,0 +1,3 @@
+# Los scripts de Linux y macOS deben conservar saltos de línea de Unix.
+*.sh text eol=lf
+herramientas/Info.plist text eol=lf

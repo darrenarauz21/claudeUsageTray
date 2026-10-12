@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Uso de Claude</string>
+  <key>CFBundleDisplayName</key><string>Uso de Claude</string>
+  <key>CFBundleIdentifier</key><string>local.usodeclaude</string>
+  <key>CFBundleExecutable</key><string>UsoDeClaude</string>
+  <key>CFBundleIconFile</key><string>app</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>{VERSION}</string>
+  <key>CFBundleShortVersionString</key><string>{VERSION}</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>

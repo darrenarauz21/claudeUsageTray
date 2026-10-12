@@ -1,0 +1,11 @@
+Uso de Claude para Linux
+
+1. Abra una terminal en esta carpeta.
+2. Ejecute:  sh instalar.sh
+3. Busque el ícono en la bandeja. También queda en el menú de aplicaciones.
+
+La app lee el uso de su cuenta de Claude Code y le avisa cuando una sesión termina, le pregunta
+algo o falla. Necesita tener Claude Code instalado y con la sesión iniciada.
+
+Para quitarla: borre ~/.local/share/uso-de-claude y ~/.local/share/applications/uso-de-claude.desktop
+(antes, use «Quitar configuración…» en el menú del ícono).
