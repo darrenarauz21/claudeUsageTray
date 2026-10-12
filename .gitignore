@@ -5,3 +5,4 @@ dist/
 .vs/
 dist-compartir/
 paquetes/
+__pycache__/
