@@ -13,14 +13,11 @@ sealed class TrayApp : ApplicationContext
     readonly AppSettings _settings;
     readonly Dictionary<string, UsageSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, Profile> _profiles = new(StringComparer.OrdinalIgnoreCase);
-    readonly ToolStripMenuItem _startup;
     readonly ContextMenuStrip _menu = new();
-    readonly ToolStripMenuItem _notifyItem;
+    readonly ContextMenuStrip _packMenu = new();
     readonly NoticeDetector _detector = new();
     readonly ToastManager _toasts = new();
     readonly Sounds _sounds = new();
-    readonly ToolStripMenuItem _soundItem;
-    readonly ToolStripMenuItem _styleItem;
 
     LocalTotals? _local;
     DateTime? _updated;
@@ -37,31 +34,20 @@ sealed class TrayApp : ApplicationContext
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
 
+        // El menú del ícono queda corto: lo demás está en la vista Ajustes (botón del pie).
         var menu = _menu;
         menu.Items.Add("Abrir", null, (_, _) => ShowForm());
         menu.Items.Add("Actualizar", null, async (_, _) => await RefreshAsync());
         menu.Items.Add("Nueva sesión…", null, (_, _) => NewSession(null));
-        menu.Items.Add("Agregar cuenta…", null, (_, _) => AddAccount());
         menu.Items.Add(new ToolStripSeparator());
-        _startup = new ToolStripMenuItem("Iniciar con Windows", null, (_, _) => ToggleStartup()) { Checked = StartupRegistration.IsEnabled };
-        menu.Items.Add(_startup);
-        _notifyItem = new ToolStripMenuItem("Notificaciones", null, (_, _) => ToggleNotifications()) { Checked = _settings.Notifications };
-        menu.Items.Add(_notifyItem);
-        _soundItem = new ToolStripMenuItem("Sonido", null, (_, _) => ToggleSound()) { Checked = _settings.Sound };
-        menu.Items.Add(_soundItem);
-        var style = new ToolStripMenuItem("Estilo de sonido");
-        foreach (var (id, label) in Sounds.Packs)
-            style.DropDownItems.Add(new ToolStripMenuItem(label, null, (_, _) => SetSoundPack(id)) { Tag = id, Checked = _settings.SoundPack == id });
-        menu.Items.Add(style);
-        _styleItem = style;
-        menu.Items.Add("Abrir carpeta de sonidos", null, (_, _) => OpenSoundsFolder());
-        menu.Items.Add("Ver un aviso de ejemplo", null, (_, _) => ShowNextSample());
-        menu.Items.Add("Copiar diagnóstico", null, (_, _) => CopyDiagnostics());
+        menu.Items.Add("Ajustes…", null, (_, _) => { ShowForm(); _form.ShowSettings(); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Configurar…", null, (_, _) => ShowSetup());
-        menu.Items.Add("Quitar configuración…", null, (_, _) => RemoveSetup());
         menu.Items.Add("Salir", null, (_, _) => Quit());
         Menus.Apply(menu, _form.Theme);
+        foreach (var (id, label) in Sounds.Packs)
+            _packMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetSoundPack(id)) { Tag = id });
+        _packMenu.Closed += (_, _) => _form.HoldOpen = false;
+        Menus.Apply(_packMenu, _form.Theme);
 
         _tray.ContextMenuStrip = menu;
         _tray.Text = "Uso de Claude";
@@ -74,7 +60,15 @@ sealed class TrayApp : ApplicationContext
         _form.RemoveRequested += RemoveAccount;
         _form.RenameRequested += RenameAccount;
         _form.NewSessionRequested += NewSession;
-        _form.ThemeChanged += () => { Menus.Apply(_menu, _form.Theme); UpdateTray(); };
+        _form.ThemeChanged += () => { Menus.Apply(_menu, _form.Theme); Menus.Apply(_packMenu, _form.Theme); UpdateTray(); };
+        _form.SetPinned(_settings.PinnedViews);
+        _form.PinnedChanged += views =>
+        {
+            _settings.PinnedViews = views.ToList();
+            SettingsStore.Save(_settings);
+        };
+        _form.SettingRequested += OnSetting;
+        PushSettings();
         _form.SelectedChanged += account =>
         {
             _settings.Selected = account.ConfigDir;
@@ -84,8 +78,6 @@ sealed class TrayApp : ApplicationContext
 
         // Las sesiones se leen cada 1,5 s con la ventana abierta y cada 3 s cerrada, solo si hay
         // notificaciones encendidas.
-        _form.NotificationsOn = _settings.Notifications;
-        _form.NotificationsToggled += ToggleNotifications;
         _toasts.Clicked += OpenNotice;
         _toasts.Shown += () => _noticesShown++;
         _sessionTimer.Interval = 3000;
@@ -225,11 +217,47 @@ sealed class TrayApp : ApplicationContext
         if (_settings.Sound) _sounds.Play(notice.Kind, _settings.SoundPack);
     }
 
+    /// <summary>Lo que la vista Ajustes muestra: se manda de nuevo cada vez que algo cambia.</summary>
+    void PushSettings()
+    {
+        var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
+        _form.SetSettingsState(new UsageForm.SettingsState(
+            _settings.Notifications, _settings.Sound, pack, StartupRegistration.IsEnabled, _settings.Accounts.Count));
+    }
+
+    void OnSetting(string action)
+    {
+        switch (action)
+        {
+            case "notify": ToggleNotifications(); break;
+            case "sound": ToggleSound(); break;
+            case "pack": ShowPackMenu(); break;
+            case "startup": ToggleStartup(); break;
+            case "sample": ShowNextSample(); break;
+            case "sounds": OpenSoundsFolder(); break;
+            case "add": AddAccount(); break;
+            case "setup": ShowSetup(); break;
+            case "diag": CopyDiagnostics(); break;
+            case "unsetup":
+                _form.HoldOpen = true;
+                try { RemoveSetup(); }
+                finally { _form.HoldOpen = false; }
+                break;
+        }
+        PushSettings();
+    }
+
+    void ShowPackMenu()
+    {
+        foreach (ToolStripMenuItem item in _packMenu.Items) item.Checked = (string?)item.Tag == _settings.SoundPack;
+        _form.HoldOpen = true;
+        _packMenu.Show(Cursor.Position);
+    }
+
     void ToggleSound()
     {
         _settings.Sound = !_settings.Sound;
         SettingsStore.Save(_settings);
-        _soundItem.Checked = _settings.Sound;
         if (_settings.Sound) _sounds.Play(NoticeKind.Done, _settings.SoundPack, force: true); // para oír cómo suena
     }
 
@@ -237,7 +265,7 @@ sealed class TrayApp : ApplicationContext
     {
         _settings.SoundPack = pack;
         SettingsStore.Save(_settings);
-        foreach (ToolStripMenuItem item in _styleItem.DropDownItems) item.Checked = (string?)item.Tag == pack;
+        PushSettings();
         _sounds.Play(NoticeKind.Done, pack, force: true); // muestra del estilo elegido
     }
 
@@ -251,8 +279,7 @@ sealed class TrayApp : ApplicationContext
     {
         _settings.Notifications = !_settings.Notifications;
         SettingsStore.Save(_settings);
-        _notifyItem.Checked = _settings.Notifications;
-        _form.NotificationsOn = _settings.Notifications;
+        PushSettings();
         if (_settings.Notifications) _detector.Reset(); // sin avisos de lo que pasó mientras estaban apagadas
         else _toasts.CloseAll();
     }
@@ -307,6 +334,7 @@ sealed class TrayApp : ApplicationContext
     void Render()
     {
         UpdateTray();
+        PushSettings(); // la cantidad de cuentas puede haber cambiado
         _form.Render(_settings.Accounts, _settings.Selected, _snapshots, _profiles, _local, _updated);
     }
 
@@ -468,7 +496,7 @@ sealed class TrayApp : ApplicationContext
     void ToggleStartup()
     {
         StartupRegistration.Set(!StartupRegistration.IsEnabled);
-        _startup.Checked = StartupRegistration.IsEnabled;
+        PushSettings();
     }
 
     static string ExePath => Environment.ProcessPath ?? Application.ExecutablePath;
@@ -506,7 +534,7 @@ sealed class TrayApp : ApplicationContext
             lines.Add(setup.StartWithWindows ? "Iniciará con Windows." : "No iniciará con Windows.");
         }
         catch (Exception ex) { lines.Add($"Inicio con Windows: no se pudo cambiar ({ex.Message})."); }
-        _startup.Checked = StartupRegistration.IsEnabled;
+        PushSettings();
         if (setup.NotificationsOn != _settings.Notifications) ToggleNotifications();
         lines.Add(_settings.Notifications ? "Notificaciones encendidas." : "Notificaciones apagadas.");
         if (lines.Any(l => l.Contains("hook")))
@@ -533,7 +561,7 @@ sealed class TrayApp : ApplicationContext
         }
         try { StartupRegistration.Set(false); lines.Add("Ya no inicia con Windows."); }
         catch (Exception ex) { lines.Add($"Inicio con Windows: no se pudo quitar ({ex.Message})."); }
-        _startup.Checked = StartupRegistration.IsEnabled;
+        PushSettings();
         MessageBox.Show(string.Join(Environment.NewLine, lines), "Uso de Claude", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 

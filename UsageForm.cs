@@ -4,10 +4,10 @@ using Microsoft.Win32;
 namespace ClaudeUsageTray;
 
 /// <summary>
-/// Ventana emergente sobre la bandeja, dibujada a mano. Dos vistas: «Uso» (límites por cuenta) y
-/// «Sesiones» (sesiones abiertas de Claude Code con su estado y progreso).
+/// Ventana emergente sobre la bandeja, dibujada a mano. Tres vistas fijas como pestañas (por defecto
+/// «Uso», «Sesiones» y «Actividad»), las demás desde el selector con pin, y los ajustes desde el pie.
 /// </summary>
-sealed class UsageForm : Form
+sealed partial class UsageForm : Form
 {
     public event Action? RefreshRequested;
     public event Action? AddRequested;
@@ -15,22 +15,19 @@ sealed class UsageForm : Form
     public event Action<Account>? RemoveRequested;
     public event Action<Account>? RenameRequested;
     public event Action? ThemeChanged;
-    public event Action? NotificationsToggled;
     public event Action<SessionInfo>? NewSessionRequested;
+    /// <summary>Las vistas fijas cambiaron (nombres de View, en orden).</summary>
+    public event Action<IReadOnlyList<string>>? PinnedChanged;
+    /// <summary>Una acción de la vista Ajustes (notify, sound, pack, startup, sample, sounds, add, setup, diag, unsetup).</summary>
+    public event Action<string>? SettingRequested;
 
     /// <summary>Mientras hay un diálogo abierto, perder el foco no cierra la ventana.</summary>
     public bool HoldOpen { get; set; }
     public DateTime LastHidden { get; private set; }
     public Theme Theme => _t;
 
-    public bool NotificationsOn
-    {
-        get => _notificationsOn;
-        set { _notificationsOn = value; Invalidate(); }
-    }
-
-    enum View { Usage, Sessions, Activity }
-    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, Bell }
+    enum View { Usage, Sessions, Activity, Flows, Settings }
+    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, ViewMenu, MenuPanel, ViewRow, ViewPin, Gear, CloseSettings, Setting, FlowSession, FlowBack }
     sealed record Hit(string Key, Rectangle Bounds, HitKind Kind, Account? Account = null, SessionInfo? Session = null, View View = View.Usage, DateOnly Day = default);
 
     /// <summary>Semanas completas del cuadro de actividad, más la actual.</summary>
@@ -61,7 +58,7 @@ sealed class UsageForm : Form
     LocalTotals? _local;
     DateTime? _updated;
     string? _selected;
-    bool _busy, _showIdle, _notificationsOn = true;
+    bool _busy, _showIdle;
     string? _hoverKey;
     Account? _menuAccount;
     SessionInfo? _menuSession;
@@ -106,7 +103,12 @@ sealed class UsageForm : Form
             if (!Visible) LastHidden = DateTime.Now;
             UpdateAnimation();
         };
-        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Hide(); };
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Escape) return;
+            if (_viewMenuOpen) CloseViewMenu();
+            else Hide();
+        };
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
@@ -173,6 +175,13 @@ sealed class UsageForm : Form
 
     public void ShowSessions() => _view = View.Sessions;
     public void ShowActivity() => _view = View.Activity;
+
+    public void ShowSettings()
+    {
+        if (_view != View.Settings) _beforeSettings = _view;
+        _view = View.Settings;
+        Relayout();
+    }
 
     /// <summary>Abre la vista de sesiones con esa sesión desplegada (al hacer clic en un aviso).</summary>
     public void FocusSession(string sessionId)
@@ -246,27 +255,32 @@ sealed class UsageForm : Form
     {
         _hits.Clear();
         if (draw) g.Clear(_t.Background);
-        var y = ComposeHeader(g, draw, S(16));
+        var y = _view == View.Settings ? ComposeSettingsHeader(g, draw, S(16)) : ComposeHeader(g, draw, S(16));
         y = _view switch
         {
             View.Usage => ComposeUsage(g, draw, y),
             View.Sessions => ComposeSessions(g, draw, y),
+            View.Flows => ComposeFlows(g, draw, y),
+            View.Settings => ComposeSettings(g, draw, y),
             _ => ComposeActivity(g, draw, y),
         };
-        return ComposeFooter(g, draw, y);
+        var height = ComposeFooter(g, draw, y);
+        // El selector de vistas va encima de todo; la ventana crece si no cabe.
+        return _viewMenuOpen ? Math.Max(height, ComposeViewMenu(g, draw) + S(12)) : height;
     }
 
     int Pad => S(20);
     int Inner => ClientSize.Width - 2 * Pad;
 
-    // ── Encabezado: «Uso» / «Sesiones» y actualizar ─────────────────────────────────────────
+    // ── Encabezado: las 3 vistas fijas, el selector y actualizar ────────────────────────────
 
     int ComposeHeader(Graphics g, bool draw, int y)
     {
         var height = TextRenderer.MeasureText(g, "Sesiones", _title, Size.Empty, Line).Height;
         var x = Pad;
-        foreach (var (view, label) in new[] { (View.Usage, "Uso"), (View.Sessions, "Sesiones"), (View.Activity, "Actividad") })
+        foreach (var view in _pinned)
         {
+            var label = ViewLabel(view);
             var width = TextRenderer.MeasureText(g, label, _title, Size.Empty, Line).Width;
             var badge = view == View.Sessions ? BadgeWidth(g) : 0;
             var key = "view:" + view;
@@ -282,17 +296,13 @@ sealed class UsageForm : Form
 
         var refresh = new Rectangle(ClientSize.Width - Pad - S(24), y + (height - S(30)) / 2, S(30), S(30));
         AddHit("refresh", refresh, HitKind.Refresh);
-        var bell = new Rectangle(refresh.X - S(32), refresh.Y, S(30), S(30));
-        AddHit("bell", bell, HitKind.Bell);
         if (draw)
         {
             if (_hoverKey == "refresh" && !_busy) Draw.Fill(g, _t.Hover, refresh, S(8));
             Write(g, GlyphRefresh, _glyph, _busy ? _t.Tertiary : _t.Secondary, refresh,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            if (_hoverKey == "bell") Draw.Fill(g, _t.Hover, bell, S(8));
-            Write(g, _notificationsOn ? GlyphBell : GlyphBellOff, _glyph, _notificationsOn ? _t.Secondary : _t.Tertiary, bell,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
+        ComposeViewSelector(g, draw, refresh.X - S(6), refresh.Y, x - S(14));
         return y + height + S(16);
     }
 
@@ -792,17 +802,26 @@ sealed class UsageForm : Form
             g.DrawLine(pen, Pad, y, ClientSize.Width - Pad, y);
         }
         y += S(14);
+        var gear = new Rectangle(ClientSize.Width - Pad - S(26), y + (smallHeight - S(28)) / 2, S(28), S(28));
+        AddHit("gear", gear, HitKind.Gear);
         if (draw)
         {
+            var right = gear.X - S(8);
             // Mientras se actualiza, la mascota ocupa el lugar de la hora.
             var unit = Math.Max(1, (int)Math.Round(smallHeight / 8f));
             var when = _mascot is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
             var whenWidth = _mascot is not null ? Mascot.Columns * unit : TextRenderer.MeasureText(g, when, _small, Size.Empty, Line).Width;
-            Write(g, Format.Local(_local), _small, _t.Tertiary, new Rectangle(Pad, y, Inner - whenWidth - S(12), smallHeight), TextFormatFlags.EndEllipsis);
+            Write(g, Format.Local(_local), _small, _t.Tertiary, new Rectangle(Pad, y, right - Pad - whenWidth - S(12), smallHeight), TextFormatFlags.EndEllipsis);
             if (_mascot is { } frame)
-                Mascot.Draw(g, ClientSize.Width - Pad - whenWidth, y + (smallHeight - Mascot.Rows * unit) / 2, unit, frame);
+                Mascot.Draw(g, right - whenWidth, y + (smallHeight - Mascot.Rows * unit) / 2, unit, frame);
             else
-                Write(g, when, _small, _t.Tertiary, new Rectangle(ClientSize.Width - Pad - whenWidth, y, whenWidth, smallHeight));
+                Write(g, when, _small, _t.Tertiary, new Rectangle(right - whenWidth, y, whenWidth, smallHeight));
+
+            var active = _view == View.Settings;
+            if (active) Draw.Fill(g, _t.Accent, gear, S(8));
+            else if (_hoverKey == "gear") Draw.Fill(g, _t.Hover, gear, S(8));
+            Write(g, GlyphSettings, _glyphSmall, active ? _t.Background : _t.Secondary, gear,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
         return y + smallHeight + S(16);
     }
@@ -838,7 +857,14 @@ sealed class UsageForm : Form
     protected override void OnMouseClick(MouseEventArgs e)
     {
         base.OnMouseClick(e);
-        if (HitAt(e.Location) is not { } hit) return;
+        var target = HitAt(e.Location);
+        // Con el selector abierto, un clic fuera de él solo lo cierra.
+        if (_viewMenuOpen && target?.Kind is not (HitKind.ViewMenu or HitKind.MenuPanel or HitKind.ViewRow or HitKind.ViewPin))
+        {
+            CloseViewMenu();
+            return;
+        }
+        if (target is not { } hit) return;
 
         if (e.Button == MouseButtons.Right)
         {
@@ -864,11 +890,33 @@ sealed class UsageForm : Form
             case HitKind.Add:
                 AddRequested?.Invoke();
                 break;
-            case HitKind.Bell:
-                NotificationsToggled?.Invoke();
-                break;
             case HitKind.View:
-                _view = hit.View;
+            case HitKind.ViewRow:
+                OpenView(hit.View);
+                break;
+            case HitKind.ViewMenu:
+                if (_viewMenuOpen) CloseViewMenu();
+                else { _viewMenuOpen = true; Relayout(); }
+                break;
+            case HitKind.ViewPin:
+                TogglePin(hit.View);
+                break;
+            case HitKind.Gear:
+                if (_view == View.Settings) OpenView(_beforeSettings);
+                else ShowSettings();
+                break;
+            case HitKind.CloseSettings:
+                OpenView(_beforeSettings);
+                break;
+            case HitKind.Setting:
+                SettingRequested?.Invoke(hit.Key[4..]);
+                break;
+            case HitKind.FlowSession when hit.Session is { } flow:
+                _flowSession = flow.SessionId;
+                Relayout();
+                break;
+            case HitKind.FlowBack:
+                _flowSession = null;
                 Relayout();
                 break;
             case HitKind.IdleToggle:
@@ -899,7 +947,7 @@ sealed class UsageForm : Form
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             _animation.Dispose();
             _title.Dispose(); _body.Dispose(); _bodyStrong.Dispose(); _small.Dispose();
-            _glyph.Dispose(); _glyphSmall.Dispose(); _spinner.Dispose();
+            _glyph.Dispose(); _glyphSmall.Dispose(); _spinner.Dispose(); _tiny?.Dispose();
             _accountMenu.Dispose(); _sessionMenu.Dispose();
         }
         base.Dispose(disposing);

@@ -47,6 +47,10 @@ sealed class AppSettings
     public bool SetupDone { get; set; }
     /// <summary>Lo último elegido en «Nueva sesión».</summary>
     public LaunchOptions Launch { get; set; } = new();
+    /// <summary>Las 3 vistas fijas como pestañas, en orden. Las demás se abren desde el selector.</summary>
+    public List<string> PinnedViews { get; set; } = [.. DefaultPinned];
+
+    public static readonly string[] DefaultPinned = ["Usage", "Sessions", "Activity"];
 }
 
 static class SettingsStore

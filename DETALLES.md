@@ -57,6 +57,25 @@ carpeta o copiar el ID.
 La línea «Modelo» sale de la última respuesta del `.jsonl`: `message.model`, `effort` y
 `advisorModel` (no documentados). Un `/model` o `/effort` se ve recién en la respuesta siguiente.
 
+## Vistas fijas y ajustes (Windows)
+
+La cabecera muestra siempre 3 vistas fijas (por defecto Uso, Sesiones y Actividad). El botón de la
+tachuela abre la lista de todas: clic en el nombre la abre sin fijarla (el botón muestra su nombre
+si cabe); el pin de una vista libre la prepara y el pin de una fija hace el cambio en ese lugar,
+así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
+engranaje del pie abre **Ajustes** (notificaciones, sonido, cuentas, inicio con Windows, hook,
+diagnóstico); el menú del ícono queda en abrir, actualizar, nueva sesión, ajustes y salir.
+
+## Flujos (Windows)
+
+Un carril por sesión activa: «Pedido», «+N» con lo anterior y los 3 últimos grupos de pasos del
+turno (los seguidos de la misma herramienta se juntan: «Leyendo ×3»). El paso en curso late y un
+punto viaja hacia él; en ámbar si la sesión le espera. Debajo, el último subagente y su estado.
+Clic en un carril: el mapa de esa sesión, con la cuenta, la sesión, cuántas veces usó cada familia
+de herramientas en el turno (línea animada hacia la actual), el subagente y los últimos 5 pasos con
+su hora. Sale del mismo `.jsonl` que la vista Sesiones: cada `tool_use` es un paso y su
+`tool_result` lo cierra; del subagente se toman `agentType` y `totalToolUseCount` del resultado.
+
 ## Nueva sesión (Windows)
 
 Desde el menú del ícono o el de una sesión. Abre Windows Terminal (o PowerShell si no está) en la

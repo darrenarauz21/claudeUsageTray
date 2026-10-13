@@ -7,6 +7,18 @@ namespace ClaudeUsageTray;
 /// <summary>El orden define el orden de la lista: lo que trabaja va primero.</summary>
 enum SessionState { Working, Waiting, Failed, Done, Idle }
 
+/// <summary>Familia de herramienta, para agrupar los pasos en la vista Flujos.</summary>
+enum ToolKind { Read, Search, Edit, Run, Agent, Web, Ask, Other }
+
+/// <summary>Una llamada a herramienta del turno actual. Done: ya llegó su resultado.</summary>
+sealed record FlowStep(string Id, ToolKind Kind, string Verb, string? Detail, DateTimeOffset? At)
+{
+    public bool Done { get; init; }
+    public string? AgentType { get; init; }
+    /// <summary>Herramientas que usó el subagente, cuando ya volvió.</summary>
+    public int? AgentSteps { get; init; }
+}
+
 sealed class SessionInfo
 {
     public required Account Account { get; init; }
@@ -38,6 +50,8 @@ sealed class SessionInfo
     public string? Model { get; init; }
     public string? Effort { get; init; }
     public string? Advisor { get; init; }
+    /// <summary>Los pasos del turno actual, en orden.</summary>
+    public IReadOnlyList<FlowStep> Flow { get; init; } = [];
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Name : Title;
 }
@@ -137,6 +151,7 @@ sealed class SessionMonitor
             Model = t.Model,
             Effort = t.Effort,
             Advisor = t.Advisor,
+            Flow = t.Flow.ToList(),
         };
     }
 
@@ -230,6 +245,7 @@ sealed class SessionMonitor
         public string? ErrorText;
         public int RetryAttempt, MaxRetries;
         public string? Model, Effort, Advisor;
+        public readonly List<FlowStep> Flow = new();
 
         public void ReadNew()
         {
@@ -270,6 +286,7 @@ sealed class SessionMonitor
             ErrorText = null;
             RetryAttempt = MaxRetries = 0;
             Model = Effort = Advisor = null;
+            Flow.Clear();
         }
 
         void Apply(string line)
@@ -324,13 +341,14 @@ sealed class SessionMonitor
             }
             else if (content.ValueKind == JsonValueKind.Array)
             {
-                var hasText = false;
+                bool hasText = false, hasResult = false;
                 foreach (var item in content.EnumerateArray())
                 {
                     var type = Json.Str(item, "type");
-                    if (type == "tool_result") { PendingTool = null; return; } // llegó el resultado de una herramienta
+                    if (type == "tool_result") { hasResult = true; Finish(Json.Str(item, "tool_use_id"), r); }
                     if (type == "text") hasText = true;
                 }
+                if (hasResult) { PendingTool = null; return; } // llegó el resultado de una herramienta
                 if (!hasText) return;
             }
             else return;
@@ -340,7 +358,24 @@ sealed class SessionMonitor
             Steps = 0;
             Action = null;
             PendingTool = null;
+            Flow.Clear();
             TurnStartedAt = Json.Date(r, "timestamp");
+        }
+
+        /// <summary>Marca el paso como terminado. Un subagente en segundo plano vuelve sin cifras: sigue trabajando.</summary>
+        void Finish(string? id, JsonElement r)
+        {
+            var i = id is null ? -1 : Flow.FindLastIndex(s => s.Id == id);
+            if (i < 0) return;
+            var step = Flow[i] with { Done = true };
+            if (step.Kind == ToolKind.Agent && r.TryGetProperty("toolUseResult", out var result) && result.ValueKind == JsonValueKind.Object)
+            {
+                if (result.TryGetProperty("totalToolUseCount", out var count) && count.TryGetInt32(out var n))
+                    step = step with { AgentSteps = n };
+                else if (Json.Str(result, "status") is { } status && status != "completed")
+                    step = step with { Done = false };
+            }
+            Flow[i] = step;
         }
 
         void ApplyAssistant(JsonElement r)
@@ -372,6 +407,12 @@ sealed class SessionMonitor
                 Steps++;
                 PendingTool = name;
                 Action = Describe(name, input);
+                if (Flow.Count >= 200) Flow.RemoveAt(0);
+                Flow.Add(new FlowStep(Json.Str(item, "id") ?? "", KindOf(name), Verb(name), Detail(input), Json.Date(r, "timestamp"))
+                {
+                    AgentType = KindOf(name) == ToolKind.Agent && input.ValueKind == JsonValueKind.Object
+                        ? Json.Str(input, "subagent_type") ?? "general-purpose" : null,
+                });
 
                 if (name == "TodoWrite" && input.ValueKind == JsonValueKind.Object
                     && input.TryGetProperty("todos", out var todos) && todos.ValueKind == JsonValueKind.Array)
@@ -385,19 +426,37 @@ sealed class SessionMonitor
 
     static string Describe(string tool, JsonElement input)
     {
-        string? detail = null;
-        if (input.ValueKind == JsonValueKind.Object)
-        {
-            var file = Json.Str(input, "file_path") ?? Json.Str(input, "notebook_path");
-            detail = Json.Str(input, "description")
-                ?? (file is null ? null : System.IO.Path.GetFileName(file))
-                ?? Json.Str(input, "pattern")
-                ?? Json.Str(input, "query")
-                ?? Json.Str(input, "skill")
-                ?? Json.Str(input, "url");
-        }
+        var verb = Verb(tool);
+        if (tool == "AskUserQuestion") return verb;
+        return Detail(input) is { } detail ? $"{verb} · {detail}" : verb;
+    }
 
-        var verb = tool switch
+    static string? Detail(JsonElement input)
+    {
+        if (input.ValueKind != JsonValueKind.Object) return null;
+        var file = Json.Str(input, "file_path") ?? Json.Str(input, "notebook_path");
+        var detail = Json.Str(input, "description")
+            ?? (file is null ? null : System.IO.Path.GetFileName(file))
+            ?? Json.Str(input, "pattern")
+            ?? Json.Str(input, "query")
+            ?? Json.Str(input, "skill")
+            ?? Json.Str(input, "url");
+        return detail?.ReplaceLineEndings(" ");
+    }
+
+    static ToolKind KindOf(string tool) => tool switch
+    {
+        "Read" => ToolKind.Read,
+        "Grep" or "Glob" or "ToolSearch" => ToolKind.Search,
+        "Edit" or "Write" or "NotebookEdit" => ToolKind.Edit,
+        "Bash" or "PowerShell" => ToolKind.Run,
+        "Agent" or "Task" => ToolKind.Agent,
+        "WebSearch" or "WebFetch" => ToolKind.Web,
+        "AskUserQuestion" => ToolKind.Ask,
+        _ => ToolKind.Other,
+    };
+
+    static string Verb(string tool) => tool switch
         {
             "Bash" or "PowerShell" => "Ejecutando",
             "Read" => "Leyendo",
@@ -413,7 +472,4 @@ sealed class SessionMonitor
             _ when tool.StartsWith("mcp__", StringComparison.Ordinal) => "Usando " + tool.Split("__").Last().Replace('_', ' '),
             _ => tool,
         };
-        if (tool == "AskUserQuestion") return verb;
-        return detail is null ? verb : $"{verb} · {detail.ReplaceLineEndings(" ")}";
-    }
 }
