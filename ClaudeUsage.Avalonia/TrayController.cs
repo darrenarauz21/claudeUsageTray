@@ -29,8 +29,6 @@ sealed class TrayController
     readonly NoticeDetector _detector = new();
     readonly ToastStack _toasts = new();
     readonly Sounds _sounds = new();
-    readonly NativeMenuItem _startupItem, _notifyItem, _soundItem;
-    readonly List<NativeMenuItem> _styleItems = new();
 
     Theme _theme;
     LocalTotals? _local;
@@ -60,44 +58,20 @@ sealed class TrayController
             UpdateTray();
         };
 
-        // Menú del ícono.
+        // Menú del ícono: corto; lo demás está en la vista Ajustes (engranaje del pie).
         var menu = new NativeMenu();
-        NativeMenuItem Item(string header, Action action)
+        void Item(string header, Action action)
         {
             var item = new NativeMenuItem(header);
             item.Click += (_, _) => action();
             menu.Add(item);
-            return item;
-        }
-        NativeMenuItem Check(string header, bool isChecked, Action action)
-        {
-            var item = Item(header, action);
-            item.ToggleType = NativeMenuItemToggleType.CheckBox;
-            item.IsChecked = isChecked;
-            return item;
         }
         Item("Abrir", ShowForm);
         Item("Actualizar", () => _ = RefreshAsync());
-        Item("Agregar cuenta…", () => _ = AddAccountAsync());
+        Item("Nueva sesión…", () => _ = NewSessionAsync(null));
         menu.Add(new NativeMenuItemSeparator());
-        _startupItem = Check("Iniciar con el sistema", StartupRegistration.IsEnabled, ToggleStartup);
-        _notifyItem = Check("Notificaciones", _settings.Notifications, ToggleNotifications);
-        _soundItem = Check("Sonido", _settings.Sound, ToggleSound);
-        var style = new NativeMenuItem("Estilo de sonido") { Menu = new NativeMenu() };
-        foreach (var (id, label) in Sounds.Packs)
-        {
-            var item = new NativeMenuItem(label) { ToggleType = NativeMenuItemToggleType.Radio, IsChecked = _settings.SoundPack == id };
-            item.Click += (_, _) => SetSoundPack(id);
-            style.Menu.Add(item);
-            _styleItems.Add(item);
-        }
-        menu.Add(style);
-        Item("Abrir carpeta de sonidos", () => { Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); });
-        Item("Ver un aviso de ejemplo", ShowNextSample);
-        Item("Copiar diagnóstico", () => _ = CopyDiagnosticsAsync());
+        Item("Ajustes…", () => { ShowForm(); View.ShowSettings(); });
         menu.Add(new NativeMenuItemSeparator());
-        Item("Configurar…", () => _ = ShowSetupAsync());
-        Item("Quitar configuración…", () => _ = RemoveSetupAsync());
         Item("Salir", Quit);
 
         _tray.Menu = menu;
@@ -117,8 +91,15 @@ sealed class TrayController
             SettingsStore.Save(_settings);
             UpdateTray();
         };
-        View.NotificationsOn = _settings.Notifications;
-        View.NotificationsToggled += ToggleNotifications;
+        View.SetPinned(_settings.PinnedViews);
+        View.PinnedChanged += views =>
+        {
+            _settings.PinnedViews = views.ToList();
+            SettingsStore.Save(_settings);
+        };
+        View.SettingRequested += action => _ = OnSettingAsync(action);
+        View.NewSessionRequested += session => _ = NewSessionAsync(session);
+        PushSettings();
         _toasts.Clicked += OpenNotice;
         _toasts.Shown += () => _noticesShown++;
 
@@ -241,11 +222,76 @@ sealed class TrayController
         if (_settings.Sound) _sounds.Play(notice.Kind, _settings.SoundPack);
     }
 
+    /// <summary>Lo que la vista Ajustes muestra: se manda de nuevo cada vez que algo cambia.</summary>
+    void PushSettings()
+    {
+        var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
+        View.SetSettingsState(new UsageView.SettingsState(
+            _settings.Notifications, _settings.Sound, pack, StartupRegistration.IsEnabled, _settings.Accounts.Count), _settings.SoundPack);
+    }
+
+    async Task OnSettingAsync(string action)
+    {
+        if (action.StartsWith("pack:", StringComparison.Ordinal)) SetSoundPack(action[5..]);
+        else
+        {
+            switch (action)
+            {
+                case "notify": ToggleNotifications(); break;
+                case "sound": ToggleSound(); break;
+                case "startup": ToggleStartup(); break;
+                case "sample": ShowNextSample(); break;
+                case "sounds": Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); break;
+                case "add": await AddAccountAsync(); break;
+                case "setup": await ShowSetupAsync(); break;
+                case "diag": await CopyDiagnosticsAsync(); break;
+                case "unsetup":
+                    _popup.HoldOpen = true;
+                    try { await RemoveSetupAsync(); }
+                    finally { _popup.HoldOpen = false; }
+                    break;
+            }
+        }
+        PushSettings();
+    }
+
+    /// <summary>Desde una sesión, propone su cuenta y su carpeta; el resto, lo último elegido.</summary>
+    async Task NewSessionAsync(SessionInfo? from)
+    {
+        var initial = _settings.Launch;
+        if (from is not null)
+            initial = new LaunchOptions
+            {
+                ConfigDir = from.Account.ConfigDir, Folder = from.Cwd,
+                Model = initial.Model, Effort = initial.Effort, Advisor = initial.Advisor,
+            };
+        var recent = (_lastSessions ?? []).Select(s => s.Cwd).Prepend(initial.Folder ?? "");
+
+        _popup.HoldOpen = true;
+        try
+        {
+            var dialog = new NewSessionWindow(_settings.Accounts, initial, recent, _theme);
+            dialog.Show();
+            dialog.Activate();
+            if (await dialog.Result is not { } options) return;
+            _settings.Launch = options;
+            SettingsStore.Save(_settings);
+            Launcher.Start(options);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.Info($"No se pudo abrir la sesión: {ex.Message}", _theme);
+        }
+        finally
+        {
+            _popup.HoldOpen = false;
+        }
+    }
+
     void ToggleSound()
     {
         _settings.Sound = !_settings.Sound;
         SettingsStore.Save(_settings);
-        _soundItem.IsChecked = _settings.Sound;
         if (_settings.Sound) _sounds.Play(NoticeKind.Done, _settings.SoundPack, force: true);
     }
 
@@ -253,7 +299,6 @@ sealed class TrayController
     {
         _settings.SoundPack = pack;
         SettingsStore.Save(_settings);
-        for (var i = 0; i < _styleItems.Count; i++) _styleItems[i].IsChecked = Sounds.Packs[i].Id == pack;
         _sounds.Play(NoticeKind.Done, pack, force: true);
     }
 
@@ -261,8 +306,7 @@ sealed class TrayController
     {
         _settings.Notifications = !_settings.Notifications;
         SettingsStore.Save(_settings);
-        _notifyItem.IsChecked = _settings.Notifications;
-        View.NotificationsOn = _settings.Notifications;
+        PushSettings();
         if (_settings.Notifications) _detector.Reset();
         else _toasts.CloseAll();
     }
@@ -316,6 +360,7 @@ sealed class TrayController
     void Render()
     {
         UpdateTray();
+        PushSettings(); // la cantidad de cuentas puede haber cambiado
         View.Render(_settings.Accounts, _settings.Selected, _snapshots, _profiles, _local, _updated);
     }
 
@@ -423,7 +468,7 @@ sealed class TrayController
     void ToggleStartup()
     {
         try { StartupRegistration.Set(!StartupRegistration.IsEnabled); } catch (Exception) { }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
     }
 
     IEnumerable<string> SetupDirs()
@@ -460,7 +505,7 @@ sealed class TrayController
             lines.Add(setup.StartWithSystem ? "Iniciará con el sistema." : "No iniciará con el sistema.");
         }
         catch (Exception ex) { lines.Add($"Iniciar con el sistema: no se pudo cambiar ({ex.Message})."); }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
         if (setup.NotificationsOn != _settings.Notifications) ToggleNotifications();
         lines.Add(_settings.Notifications ? "Notificaciones encendidas." : "Notificaciones apagadas.");
         if (lines.Any(l => l.Contains("hook")))
@@ -484,7 +529,7 @@ sealed class TrayController
         }
         try { StartupRegistration.Set(false); lines.Add("Ya no inicia con el sistema."); }
         catch (Exception ex) { lines.Add($"Iniciar con el sistema: no se pudo quitar ({ex.Message})."); }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
         await Dialogs.Info(string.Join(Environment.NewLine, lines), _theme);
     }
 

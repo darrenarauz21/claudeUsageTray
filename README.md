@@ -7,10 +7,10 @@ de Claude Code.
 - **Uso:** el porcentaje de su sesión de 5 horas y de la semana, por cuenta, y cuándo se reinicia.
 - **Sesiones:** qué sesiones de Claude Code tiene abiertas, si están trabajando, esperando su
   respuesta o ya terminaron, y con qué modelo, esfuerzo y asesor.
-- **Nueva sesión** (Windows): abre Claude Code en una terminal con la cuenta, la carpeta, el modelo,
-  el esfuerzo y el asesor que usted elija para esa sesión.
-- **Flujos** (Windows): lo que hace cada sesión, paso a paso y animado; clic en una sesión muestra
-  su mapa de herramientas. Sale de los archivos de Claude Code: no gasta tokens.
+- **Nueva sesión:** abre Claude Code en una terminal con la cuenta, la carpeta, el modelo, el
+  esfuerzo y el asesor que usted elija para esa sesión.
+- **Flujos:** lo que hace cada sesión, paso a paso y animado; clic en una sesión muestra su mapa
+  de herramientas. Sale de los archivos de Claude Code: no gasta tokens.
 - **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
 - **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
   necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
@@ -72,22 +72,21 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 
 ## Cómo se usa
 
-- **Clic en el ícono:** abre la ventana. Arriba elige **Uso**, **Sesiones** o **Actividad**. En
-  Windows, esas son las 3 vistas fijas: el botón con la tachuela abre las demás (como **Flujos**) y
-  permite cambiar cuál queda fija. El engranaje del pie abre los **Ajustes**.
+- **Clic en el ícono:** abre la ventana. Arriba están las 3 vistas fijas (al principio **Uso**,
+  **Sesiones** y **Actividad**); el botón con la tachuela abre las demás (como **Flujos**) y permite
+  cambiar cuál queda fija. El engranaje del pie abre los **Ajustes**.
 - **El número del ícono** es el porcentaje de su sesión de 5 horas.
 - **Clic en un aviso:** abre la sesión o la cuenta de la que habla.
 - **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
-- **Menú del ícono** (clic derecho; en Mac, clic). En Windows: abrir, actualizar, nueva sesión,
-  ajustes y salir. En Linux y macOS: actualizar, agregar otra cuenta, encender o
-  apagar notificaciones y sonido, elegir el estilo de sonido, ver un aviso de ejemplo y salir.
+- **Menú del ícono** (clic derecho; en Mac, clic): abrir, actualizar, nueva sesión, ajustes y salir.
+  Notificaciones, sonido, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
 
 ## Si algo no funciona
 
-- **No salen avisos:** use **Copiar diagnóstico** en el menú del ícono y compártalo con quien le
+- **No salen avisos:** use **Copiar diagnóstico** en **Ajustes** (el engranaje del pie) y compártalo con quien le
   pasó la app.
 - **Dice «Sesión vencida»:** abra Claude Code con esa cuenta y se arregla sola.
-- **Para quitarla:** use **Quitar configuración…** en el menú y después borre la app.
+- **Para quitarla:** use **Quitar…** en **Ajustes** y después borre la app.
 
 Los detalles técnicos (de dónde sale cada dato, cómo compilarla y empaquetarla) están en
 [DETALLES.md](DETALLES.md).

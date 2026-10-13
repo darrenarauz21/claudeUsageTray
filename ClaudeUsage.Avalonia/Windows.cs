@@ -38,7 +38,8 @@ sealed class PopupWindow : Window
         Content = _frame;
 
         Deactivated += (_, _) => { if (!HoldOpen) HidePopup(); };
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) HidePopup(); };
+        // Escape cierra primero el selector de vistas; si no hay nada abierto, la ventana.
+        KeyDown += (_, e) => { if (e.Key == Key.Escape && !View.CloseMenus()) HidePopup(); };
         // Al cambiar de alto (otra vista, una sesión desplegada) se vuelve a pegar al borde.
         SizeChanged += (_, _) => { if (IsVisible) Reposition(); };
     }

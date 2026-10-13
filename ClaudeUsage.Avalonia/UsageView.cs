@@ -8,22 +8,25 @@ using SD = System.Drawing;
 namespace ClaudeUsageTray;
 
 /// <summary>
-/// Contenido de la ventana, dibujado a mano igual que en Windows: «Uso», «Sesiones» y «Actividad».
+/// Contenido de la ventana, dibujado a mano igual que en Windows: 3 vistas fijas, las demás desde el selector con pin y «Ajustes» desde el pie.
 /// Un solo recorrido (Compose) sirve para medir la altura y para dibujar.
 /// </summary>
-sealed class UsageView : Control
+sealed partial class UsageView : Control
 {
     public event Action? RefreshRequested;
     public event Action? AddRequested;
     public event Action<Account>? SelectedChanged;
     public event Action<Account>? RemoveRequested;
     public event Action<Account>? RenameRequested;
-    public event Action? NotificationsToggled;
+    public event Action<SessionInfo>? NewSessionRequested;
+    public event Action<IReadOnlyList<string>>? PinnedChanged;
+    /// <summary>Una acción de «Ajustes» (notify, sound, pack:id, startup, sample, sounds, add, setup, diag, unsetup).</summary>
+    public event Action<string>? SettingRequested;
 
     public const double ViewWidth = 360;
 
-    enum View { Usage, Sessions, Activity }
-    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, Bell }
+    enum View { Usage, Sessions, Activity, Flows, Settings }
+    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, ViewMenu, MenuPanel, ViewRow, ViewPin, Gear, CloseSettings, Setting, FlowSession, FlowBack }
     sealed record Hit(string Key, Rect Bounds, HitKind Kind, Account? Account = null, SessionInfo? Session = null, View View = View.Usage, DateOnly Day = default);
 
     const int HeatmapWeeks = 26;
@@ -45,14 +48,18 @@ sealed class UsageView : Control
     LocalTotals? _local;
     DateTime? _updated;
     string? _selected;
-    bool _busy, _showIdle, _notificationsOn = true;
+    bool _busy, _showIdle;
     string? _hoverKey;
 
     public UsageView()
     {
         Width = ViewWidth;
         ClipToBounds = true;
-        _animation.Tick += (_, _) => InvalidateVisual();
+        _animation.Tick += (_, _) =>
+        {
+            InvalidateVisual();
+            UpdateAnimation(); // se apaga sola cuando ya no hay nada que mover
+        };
     }
 
     public Theme Palette
@@ -61,13 +68,7 @@ sealed class UsageView : Control
         set { _t = value; Relayout(); }
     }
 
-    public bool NotificationsOn
-    {
-        get => _notificationsOn;
-        set { _notificationsOn = value; InvalidateVisual(); }
-    }
-
-    public void SetBusy(bool busy) { _busy = busy; InvalidateVisual(); }
+    public void SetBusy(bool busy) { _busy = busy; UpdateAnimation(); InvalidateVisual(); }
 
     public void Render(IReadOnlyList<Account> accounts, string? selectedDir,
         IReadOnlyDictionary<string, UsageSnapshot> snapshots, IReadOnlyDictionary<string, Profile> profiles,
@@ -84,6 +85,13 @@ sealed class UsageView : Control
 
     public void ShowSessions() => _view = View.Sessions;
     public void ShowActivity() => _view = View.Activity;
+
+    public void ShowSettings()
+    {
+        if (_view != View.Settings) _beforeSettings = _view;
+        _view = View.Settings;
+        Relayout();
+    }
 
     public void FocusSession(string sessionId)
     {
@@ -112,13 +120,16 @@ sealed class UsageView : Control
     {
         _sessions = sessions;
         _expanded.IntersectWith(sessions.Select(s => s.SessionId));
+        _arrivals.Update(sessions);
         UpdateAnimation();
         Relayout();
     }
 
+    /// <summary>Corre con la ventana abierta y algo en marcha: una sesión activa, un paso que entra o una actualización.</summary>
     public void UpdateAnimation()
     {
-        var active = IsEffectivelyVisible && _sessions.Any(s => s.State is SessionState.Working or SessionState.Waiting);
+        var active = IsEffectivelyVisible && (_busy || Environment.TickCount64 < _arrivals.BusyUntil
+            || _sessions.Any(s => s.State is SessionState.Working or SessionState.Waiting));
         if (active && !_animation.IsEnabled) _animation.Start();
         else if (!active && _animation.IsEnabled) _animation.Stop();
     }
@@ -143,24 +154,29 @@ sealed class UsageView : Control
     {
         _hits.Clear();
         dc?.FillRectangle(Gfx.B(_t.Background), new Rect(0, 0, ViewWidth, Math.Max(Bounds.Height, 1)));
-        var y = ComposeHeader(dc, 16);
+        var y = _view == View.Settings ? ComposeSettingsHeader(dc, 16) : ComposeHeader(dc, 16);
         y = _view switch
         {
             View.Usage => ComposeUsage(dc, y),
             View.Sessions => ComposeSessions(dc, y),
+            View.Flows => ComposeFlows(dc, y),
+            View.Settings => ComposeSettings(dc, y),
             _ => ComposeActivity(dc, y),
         };
-        return ComposeFooter(dc, y);
+        var height = ComposeFooter(dc, y);
+        // El selector de vistas va encima de todo; la ventana crece si no cabe.
+        return _viewMenuOpen ? Math.Max(height, ComposeViewMenu(dc) + 12) : height;
     }
 
-    // ── Encabezado ──────────────────────────────────────────────────────────────────────────
+    // ── Encabezado: las 3 vistas fijas, el selector y actualizar ────────────────────────────
 
     double ComposeHeader(DrawingContext? dc, double y)
     {
         var height = Gfx.Title.LineHeight;
         var x = Pad;
-        foreach (var (view, label) in new[] { (View.Usage, "Uso"), (View.Sessions, "Sesiones"), (View.Activity, "Actividad") })
+        foreach (var view in _pinned)
         {
+            var label = ViewLabel(view);
             var width = Gfx.Measure(label, Gfx.Title).Width;
             var badge = view == View.Sessions ? BadgeWidth() : 0;
             var key = "view:" + view;
@@ -176,15 +192,20 @@ sealed class UsageView : Control
 
         var refresh = new Rect(ViewWidth - Pad - 24, y + (height - 30) / 2, 30, 30);
         AddHit("refresh", refresh, HitKind.Refresh);
-        var bell = new Rect(refresh.X - 32, refresh.Y, 30, 30);
-        AddHit("bell", bell, HitKind.Bell);
         if (dc is not null)
         {
             if (_hoverKey == "refresh" && !_busy) Gfx.Fill(dc, _t.Hover, refresh, 8);
-            Gfx.Icon(dc, Glyph.Refresh, _busy ? _t.Tertiary : _t.Secondary, refresh);
-            if (_hoverKey == "bell") Gfx.Fill(dc, _t.Hover, bell, 8);
-            Gfx.Icon(dc, _notificationsOn ? Glyph.Bell : Glyph.BellOff, _notificationsOn ? _t.Secondary : _t.Tertiary, bell);
+            if (_busy)
+            {
+                // Gira mientras actualiza.
+                var angle = Environment.TickCount64 % 900 / 900.0 * 2 * Math.PI;
+                var c = refresh.Center;
+                using (dc.PushTransform(Matrix.CreateTranslation(-c.X, -c.Y) * Matrix.CreateRotation(angle) * Matrix.CreateTranslation(c.X, c.Y)))
+                    Gfx.Icon(dc, Glyph.Refresh, _t.Accent, refresh);
+            }
+            else Gfx.Icon(dc, Glyph.Refresh, _t.Secondary, refresh);
         }
+        ComposeViewSelector(dc, refresh.X - 6, refresh.Y, x - 14);
         return y + height + 16;
     }
 
@@ -614,16 +635,24 @@ sealed class UsageView : Control
         var small = Gfx.Small.LineHeight;
         dc?.DrawLine(Gfx.P(_t.Border), new Point(Pad, y), new Point(ViewWidth - Pad, y));
         y += 14;
+        var gear = new Rect(ViewWidth - Pad - 26, y + (small - 28) / 2, 28, 28);
+        AddHit("gear", gear, HitKind.Gear);
         if (dc is not null)
         {
             const double unit = 2;
+            var right = gear.X - 8;
             var when = _mascot is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
             var whenWidth = _mascot is not null ? MascotSprite.Columns * unit : Gfx.Measure(when, Gfx.Small).Width;
-            Gfx.Write(dc, Format.Local(_local), Gfx.Small, _t.Tertiary, new Rect(Pad, y, Inner - whenWidth - 12, small));
+            Gfx.Write(dc, Format.Local(_local), Gfx.Small, _t.Tertiary, new Rect(Pad, y, right - Pad - whenWidth - 12, small));
             if (_mascot is { } frame)
-                Gfx.Pixels(dc, ViewWidth - Pad - whenWidth, y + (small - MascotSprite.Rows * unit) / 2, unit, fill => MascotSprite.Paint(fill, frame));
+                Gfx.Pixels(dc, right - whenWidth, y + (small - MascotSprite.Rows * unit) / 2, unit, fill => MascotSprite.Paint(fill, frame));
             else
-                Gfx.Write(dc, when, Gfx.Small, _t.Tertiary, new Rect(ViewWidth - Pad - whenWidth, y, whenWidth + 1, small));
+                Gfx.Write(dc, when, Gfx.Small, _t.Tertiary, new Rect(right - whenWidth, y, whenWidth + 1, small));
+
+            var active = _view == View.Settings;
+            if (active) Gfx.Fill(dc, _t.Accent, gear, 8);
+            else if (_hoverKey == "gear") Gfx.Fill(dc, _t.Hover, gear, 8);
+            Gfx.Icon(dc, Glyph.Settings, active ? _t.Background : _t.Secondary, gear, 15);
         }
         return y + small + 16;
     }
@@ -656,7 +685,14 @@ sealed class UsageView : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (HitAt(e.GetPosition(this)) is not { } hit) return;
+        var target = HitAt(e.GetPosition(this));
+        // Con el selector abierto, un clic fuera de él solo lo cierra.
+        if (_viewMenuOpen && target?.Kind is not (HitKind.ViewMenu or HitKind.MenuPanel or HitKind.ViewRow or HitKind.ViewPin))
+        {
+            CloseMenus();
+            return;
+        }
+        if (target is not { } hit) return;
 
         if (e.InitialPressMouseButton == MouseButton.Right)
         {
@@ -665,7 +701,8 @@ sealed class UsageView : Control
                     ("Abrir carpeta", () => Gfx.OpenFolder(account.ConfigDir)),
                     ("Quitar", () => RemoveRequested?.Invoke(account)));
             else if (hit.Session is { } session)
-                ShowMenu(("Abrir carpeta del proyecto", () => Gfx.OpenFolder(session.Cwd)),
+                ShowMenu(("Nueva sesión en esta carpeta…", () => NewSessionRequested?.Invoke(session)),
+                    ("Abrir carpeta del proyecto", () => Gfx.OpenFolder(session.Cwd)),
                     ("Copiar ID de la sesión", () => _ = TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(session.SessionId)));
             return;
         }
@@ -675,8 +712,21 @@ sealed class UsageView : Control
         {
             case HitKind.Refresh when !_busy: RefreshRequested?.Invoke(); break;
             case HitKind.Add: AddRequested?.Invoke(); break;
-            case HitKind.Bell: NotificationsToggled?.Invoke(); break;
-            case HitKind.View: _view = hit.View; Relayout(); break;
+            case HitKind.View or HitKind.ViewRow: OpenView(hit.View); break;
+            case HitKind.ViewMenu:
+                if (_viewMenuOpen) CloseMenus();
+                else { _viewMenuOpen = true; Relayout(); }
+                break;
+            case HitKind.ViewPin: TogglePin(hit.View); break;
+            case HitKind.Gear:
+                if (_view == View.Settings) OpenView(_beforeSettings);
+                else ShowSettings();
+                break;
+            case HitKind.CloseSettings: OpenView(_beforeSettings); break;
+            case HitKind.Setting when hit.Key == "set:pack": ShowPackMenu(); break;
+            case HitKind.Setting: SettingRequested?.Invoke(hit.Key[4..]); break;
+            case HitKind.FlowSession when hit.Session is { } flow: _flowSession = flow.SessionId; Relayout(); break;
+            case HitKind.FlowBack: _flowSession = null; Relayout(); break;
             case HitKind.IdleToggle: _showIdle = !_showIdle; Relayout(); break;
             case HitKind.Session when hit.Session is { } session:
                 if (!_expanded.Remove(session.SessionId)) _expanded.Add(session.SessionId);

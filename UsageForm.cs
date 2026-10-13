@@ -95,7 +95,11 @@ sealed partial class UsageForm : Form
         Menus.Apply(_accountMenu, _t);
         Menus.Apply(_sessionMenu, _t);
 
-        _animation.Tick += (_, _) => { if (Visible) Invalidate(); };
+        _animation.Tick += (_, _) =>
+        {
+            if (Visible) Invalidate();
+            UpdateAnimation(); // se apaga sola cuando ya no hay nada que mover
+        };
 
         Deactivate += (_, _) => { if (!HoldOpen) Hide(); };
         VisibleChanged += (_, _) =>
@@ -157,6 +161,7 @@ sealed partial class UsageForm : Form
     public void SetBusy(bool busy)
     {
         _busy = busy;
+        UpdateAnimation();
         Invalidate();
     }
 
@@ -215,14 +220,19 @@ sealed partial class UsageForm : Form
     {
         _sessions = sessions;
         _expanded.IntersectWith(sessions.Select(s => s.SessionId));
+        _arrivals.Update(sessions);
         UpdateAnimation();
         Relayout();
     }
 
-    /// <summary>La animación solo corre con la ventana abierta y algo en marcha.</summary>
+    /// <summary>
+    /// La animación corre con la ventana abierta y algo en marcha: una sesión que trabaja o espera,
+    /// un paso que está entrando o una actualización.
+    /// </summary>
     void UpdateAnimation()
     {
-        var active = Visible && _sessions.Any(s => s.State is SessionState.Working or SessionState.Waiting);
+        var active = Visible && (_busy || Environment.TickCount64 < _arrivals.BusyUntil
+            || _sessions.Any(s => s.State is SessionState.Working or SessionState.Waiting));
         if (active && !_animation.Enabled) _animation.Start();
         else if (!active && _animation.Enabled) _animation.Stop();
     }
@@ -299,8 +309,18 @@ sealed partial class UsageForm : Form
         if (draw)
         {
             if (_hoverKey == "refresh" && !_busy) Draw.Fill(g, _t.Hover, refresh, S(8));
-            Write(g, GlyphRefresh, _glyph, _busy ? _t.Tertiary : _t.Secondary, refresh,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            if (_busy)
+            {
+                // Gira mientras actualiza (DrawString respeta la rotación; TextRenderer no).
+                var state = g.Save();
+                g.TranslateTransform(refresh.X + refresh.Width / 2f, refresh.Y + refresh.Height / 2f);
+                g.RotateTransform(Environment.TickCount64 % 900 / 900f * 360);
+                using var brush = new SolidBrush(_t.Accent);
+                using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(GlyphRefresh, _glyph, brush, PointF.Empty, format);
+                g.Restore(state);
+            }
+            else Write(g, GlyphRefresh, _glyph, _t.Secondary, refresh, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
         ComposeViewSelector(g, draw, refresh.X - S(6), refresh.Y, x - S(14));
         return y + height + S(16);

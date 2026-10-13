@@ -52,42 +52,53 @@ llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
 Mientras trabaja, la sesión muestra lo que está haciendo, los pasos del turno y el tiempo. Con
 lista de tareas (`TodoWrite`), la barra pasa a «3 de 5 tareas». Clic: despliega el último pedido,
 la carpeta, el modelo y las interacciones. Clic derecho: nueva sesión en esa carpeta, abrir la
-carpeta o copiar el ID.
+carpeta o copiar el ID. Solo se cuentan los procesos vivos: `procStart` (no documentado) se compara
+con la hora de inicio del proceso en los formatos conocidos y, si el formato no se reconoce, basta
+con que el proceso exista.
 
 La línea «Modelo» sale de la última respuesta del `.jsonl`: `message.model`, `effort` y
 `advisorModel` (no documentados). Un `/model` o `/effort` se ve recién en la respuesta siguiente.
 
-## Vistas fijas y ajustes (Windows)
+## Vistas fijas y ajustes
 
 La cabecera muestra siempre 3 vistas fijas (por defecto Uso, Sesiones y Actividad). El botón de la
 tachuela abre la lista de todas: clic en el nombre la abre sin fijarla (el botón muestra su nombre
 si cabe); el pin de una vista libre la prepara y el pin de una fija hace el cambio en ese lugar,
 así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
-engranaje del pie abre **Ajustes** (notificaciones, sonido, cuentas, inicio con Windows, hook,
+engranaje del pie abre **Ajustes** (notificaciones, sonido, cuentas, inicio con el sistema, hook,
 diagnóstico); el menú del ícono queda en abrir, actualizar, nueva sesión, ajustes y salir.
 
-## Flujos (Windows)
+## Flujos
 
-Un carril por sesión activa: «Pedido», «+N» con lo anterior y los 3 últimos grupos de pasos del
-turno (los seguidos de la misma herramienta se juntan: «Leyendo ×3»). El paso en curso late y un
-punto viaja hacia él; en ámbar si la sesión le espera. Debajo, el último subagente y su estado.
-Clic en un carril: el mapa de esa sesión, con la cuenta, la sesión, cuántas veces usó cada familia
-de herramientas en el turno (línea animada hacia la actual), el subagente y los últimos 5 pasos con
-su hora. Sale del mismo `.jsonl` que la vista Sesiones: cada `tool_use` es un paso y su
-`tool_result` lo cierra; del subagente se toman `agentType` y `totalToolUseCount` del resultado.
+Un carril por sesión activa: «Pedido», «+N» con lo anterior y los últimos grupos de pasos del
+turno (los seguidos de la misma herramienta se juntan: «Leyendo ×3»). Mientras la sesión trabaja
+siempre hay algo animado: si el último paso sigue en curso, late; si ya volvió (leer o buscar duran
+milisegundos), aparece al final «Pensando…» con el asterisco que gira. Un punto viaja hacia el
+último nodo, cada paso nuevo entra creciendo y el ícono de actualizar gira mientras actualiza; en
+ámbar si la sesión le espera. Debajo, el último subagente y su estado. Clic en un carril: el mapa
+de esa sesión, con la cuenta, la sesión, cuántas veces usó cada familia de herramientas en el turno
+(línea animada hacia la herramienta en uso, o de vuelta a la sesión mientras piensa), el subagente
+y los últimos 5 pasos con su hora. Sale del mismo `.jsonl` que la vista Sesiones: cada `tool_use`
+es un paso y su `tool_result` lo cierra; del subagente se toman `agentType` y `totalToolUseCount`
+del resultado. La lógica común está en `Core/Flows.cs`.
 
-## Nueva sesión (Windows)
+## Nueva sesión
 
-Desde el menú del ícono o el de una sesión. Abre Windows Terminal (o PowerShell si no está) en la
-carpeta elegida, fija `CLAUDE_CONFIG_DIR` de la cuenta (o lo quita para `~/.claude`) y ejecuta
-`claude --model … --effort … --advisor …`. Esas opciones valen solo para esa sesión: no tocan el
-`settings.json` de la cuenta. «Predeterminado» omite la opción; el asesor «Ninguno» se apaga con
+Desde el menú del ícono o el de una sesión. Abre una terminal en la carpeta elegida, fija
+`CLAUDE_CONFIG_DIR` de la cuenta (o lo quita para `~/.claude`) y ejecuta
+`claude --model … --effort … --advisor …`:
+
+- **Windows:** Windows Terminal, o PowerShell si no está.
+- **macOS:** Terminal, con `osascript` (`do script`), en el shell de inicio de la persona.
+- **Linux:** la primera instalada entre gnome-terminal, konsole, xfce4-terminal, kitty, alacritty,
+  wezterm, tilix, xterm y x-terminal-emulator, con `bash -lc` (para que `claude` esté en el PATH);
+  al salir de Claude Code queda abierto el shell de la persona.
+
+Esas opciones valen solo para esa sesión: no tocan el `settings.json` de la cuenta.
+«Predeterminado» omite la opción; el asesor «Ninguno» se apaga con
 `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, porque `--advisor` no acepta `off`. `--advisor` no aparece
 en `claude --help`; se comprobó con Claude Code 2.1.296. Lo último elegido se guarda en
-`settings.json` de la app (`Launch`). El script está en `Core/Launcher.cs`, listo para la app de
-Linux y macOS, que aún no lo usa. Solo se cuentan
-los procesos vivos: `procStart` (no documentado) se compara con la hora de inicio del proceso en
-los formatos conocidos y, si el formato no se reconoce, basta con que el proceso exista.
+`settings.json` de la app (`Launch`). Los scripts están en `Core/Launcher.cs`.
 
 ## Avisos
 
@@ -158,7 +169,7 @@ Opciones de línea de comandos (las dos apps):
 
 ## Si no salen avisos
 
-**Copiar diagnóstico**, en el menú del ícono, copia un resumen sin correos ni tokens: versiones,
+**Copiar diagnóstico**, en **Ajustes**, copia un resumen sin correos ni tokens: versiones,
 si las notificaciones están encendidas y cada carpeta `~/.claude*` con sus credenciales, sesiones
 registradas y vivas, y el hook. Lo habitual:
 
@@ -188,7 +199,7 @@ Lo que no se pudo probar sin una Mac. Para quien la pruebe por primera vez:
    en **Acceso a Llaveros** que exista «Claude Code-credentials» (o «…-credentials-xxxxxxxx» si se
    usa `CLAUDE_CONFIG_DIR`) y responder **Permitir siempre** cuando macOS lo pregunte.
 3. **Sesiones** muestra las sesiones abiertas de Claude Code y su estado.
-4. **Ver un aviso de ejemplo** muestra el aviso arriba a la derecha y suena.
-5. **Configurar…** agrega el hook; al pedir permiso una sesión nueva, sale «Necesita su permiso».
+4. **Ajustes › Ver un aviso de ejemplo** muestra el aviso arriba a la derecha y suena.
+5. **Ajustes › Configurar…** agrega el hook; al pedir permiso una sesión nueva, sale «Necesita su permiso».
 6. **Iniciar con el sistema** crea `~/Library/LaunchAgents/local.usodeclaude.plist`.
-7. **Copiar diagnóstico**: pegar el resultado si algo falla.
+7. **Ajustes › Copiar diagnóstico**: pegar el resultado si algo falla.
