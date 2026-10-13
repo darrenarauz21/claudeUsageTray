@@ -51,7 +51,22 @@ llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
 
 Mientras trabaja, la sesión muestra lo que está haciendo, los pasos del turno y el tiempo. Con
 lista de tareas (`TodoWrite`), la barra pasa a «3 de 5 tareas». Clic: despliega el último pedido,
-la carpeta y las interacciones. Clic derecho: abrir la carpeta o copiar el ID. Solo se cuentan
+la carpeta, el modelo y las interacciones. Clic derecho: nueva sesión en esa carpeta, abrir la
+carpeta o copiar el ID.
+
+La línea «Modelo» sale de la última respuesta del `.jsonl`: `message.model`, `effort` y
+`advisorModel` (no documentados). Un `/model` o `/effort` se ve recién en la respuesta siguiente.
+
+## Nueva sesión (Windows)
+
+Desde el menú del ícono o el de una sesión. Abre Windows Terminal (o PowerShell si no está) en la
+carpeta elegida, fija `CLAUDE_CONFIG_DIR` de la cuenta (o lo quita para `~/.claude`) y ejecuta
+`claude --model … --effort … --advisor …`. Esas opciones valen solo para esa sesión: no tocan el
+`settings.json` de la cuenta. «Predeterminado» omite la opción; el asesor «Ninguno» se apaga con
+`CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, porque `--advisor` no acepta `off`. `--advisor` no aparece
+en `claude --help`; se comprobó con Claude Code 2.1.296. Lo último elegido se guarda en
+`settings.json` de la app (`Launch`). El script está en `Core/Launcher.cs`, listo para la app de
+Linux y macOS, que aún no lo usa. Solo se cuentan
 los procesos vivos: `procStart` (no documentado) se compara con la hora de inicio del proceso en
 los formatos conocidos y, si el formato no se reconoce, basta con que el proceso exista.
 

@@ -424,6 +424,7 @@ sealed class UsageView : Control
     {
         if (!string.IsNullOrWhiteSpace(s.LastPrompt)) yield return ("Pedido", s.LastPrompt.ReplaceLineEndings(" "), 3);
         if (s.Cwd.Length > 0) yield return ("Carpeta", s.Cwd.Replace(Account.Home, "~"), 1);
+        if (Format.ModelLine(s) is { Length: > 0 } model) yield return ("Modelo", model, 1);
         var turns = s.Turns == 1 ? "1 interacción" : $"{s.Turns} interacciones";
         var started = s.StartedAt is { } at ? $" · desde {at.LocalDateTime:t}" : "";
         yield return ("Actividad", turns + started, 1);

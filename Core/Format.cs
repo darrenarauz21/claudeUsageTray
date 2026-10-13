@@ -43,6 +43,30 @@ static class Format
     public static string Breakdown(IEnumerable<BreakdownRow> rows) =>
         string.Join(" · ", rows.Where(r => r.Percent > 0).OrderByDescending(r => r.Percent).Select(r => $"{r.Name} {r.Percent:0} %"));
 
+    /// <summary>«claude-opus-5-5» → «Opus 5.5»; «claude-haiku-4-5-20251001» → «Haiku 4.5». Lo que no se reconoce queda igual.</summary>
+    public static string Model(string id)
+    {
+        var name = id.StartsWith("claude-", StringComparison.OrdinalIgnoreCase) ? id[7..] : id;
+        var oneMillion = name.EndsWith("[1m]", StringComparison.OrdinalIgnoreCase);
+        if (oneMillion) name = name[..^4];
+        var parts = name.Split('-');
+        if (parts[0].Length == 0 || !char.IsLetter(parts[0][0])) return id;
+        var version = string.Join('.', parts.Skip(1).TakeWhile(p => p.Length is > 0 and <= 2 && p.All(char.IsDigit)));
+        if (version.Length == 0) return id;
+        var label = char.ToUpperInvariant(parts[0][0]) + parts[0][1..] + " " + version;
+        return oneMillion ? label + " (1M)" : label;
+    }
+
+    /// <summary>«Opus 5.5 · esfuerzo xhigh · asesor Opus 5.5», o vacío si la sesión aún no respondió.</summary>
+    public static string ModelLine(SessionInfo s)
+    {
+        if (s.Model is null) return "";
+        var parts = new List<string> { Model(s.Model) };
+        if (s.Effort is { } effort) parts.Add("esfuerzo " + effort);
+        if (s.Advisor is { } advisor) parts.Add("asesor " + Model(advisor));
+        return string.Join(" · ", parts);
+    }
+
     public static string Local(LocalTotals? t) => t switch
     {
         null => "",

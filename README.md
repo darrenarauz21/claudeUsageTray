@@ -5,8 +5,10 @@ de Mac) y le muestra, de un vistazo, cuánto le queda de Claude y qué están ha
 de Claude Code.
 
 - **Uso:** el porcentaje de su sesión de 5 horas y de la semana, por cuenta, y cuándo se reinicia.
-- **Sesiones:** qué sesiones de Claude Code tiene abiertas y si están trabajando, esperando su
-  respuesta o ya terminaron.
+- **Sesiones:** qué sesiones de Claude Code tiene abiertas, si están trabajando, esperando su
+  respuesta o ya terminaron, y con qué modelo, esfuerzo y asesor.
+- **Nueva sesión** (Windows): abre Claude Code en una terminal con la cuenta, la carpeta, el modelo,
+  el esfuerzo y el asesor que usted elija para esa sesión.
 - **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
 - **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
   necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
@@ -71,7 +73,8 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 - **Clic en el ícono:** abre la ventana. Arriba elige **Uso**, **Sesiones** o **Actividad**.
 - **El número del ícono** es el porcentaje de su sesión de 5 horas.
 - **Clic en un aviso:** abre la sesión o la cuenta de la que habla.
-- **Menú del ícono** (clic derecho; en Mac, clic): actualizar, agregar otra cuenta, encender o
+- **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
+- **Menú del ícono** (clic derecho; en Mac, clic): actualizar, nueva sesión (Windows), agregar otra cuenta, encender o
   apagar notificaciones y sonido, elegir el estilo de sonido, ver un aviso de ejemplo y salir.
 
 ## Si algo no funciona

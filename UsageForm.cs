@@ -16,6 +16,7 @@ sealed class UsageForm : Form
     public event Action<Account>? RenameRequested;
     public event Action? ThemeChanged;
     public event Action? NotificationsToggled;
+    public event Action<SessionInfo>? NewSessionRequested;
 
     /// <summary>Mientras hay un diálogo abierto, perder el foco no cierra la ventana.</summary>
     public bool HoldOpen { get; set; }
@@ -91,6 +92,7 @@ sealed class UsageForm : Form
         _accountMenu.Items.Add(new ToolStripSeparator());
         _accountMenu.Items.Add("Quitar", null, (_, _) => { if (_menuAccount is { } a) RemoveRequested?.Invoke(a); });
 
+        _sessionMenu.Items.Add("Nueva sesión en esta carpeta…", null, (_, _) => { if (_menuSession is { } s) NewSessionRequested?.Invoke(s); });
         _sessionMenu.Items.Add("Abrir carpeta del proyecto", null, (_, _) => { if (_menuSession is { } s) OpenFolder(s.Cwd); });
         _sessionMenu.Items.Add("Copiar ID de la sesión", null, (_, _) => { if (_menuSession is { } s) Clipboard.SetText(s.SessionId); });
         Menus.Apply(_accountMenu, _t);
@@ -562,6 +564,8 @@ sealed class UsageForm : Form
             yield return ("Pedido", s.LastPrompt.ReplaceLineEndings(" "), 3);
         if (s.Cwd.Length > 0)
             yield return ("Carpeta", s.Cwd.Replace(Account.Home, "~"), 1);
+        if (Format.ModelLine(s) is { Length: > 0 } model)
+            yield return ("Modelo", model, 1);
         var turns = s.Turns == 1 ? "1 interacción" : $"{s.Turns} interacciones";
         var started = s.StartedAt is { } at ? $" · desde {at.LocalDateTime:t}" : "";
         yield return ("Actividad", turns + started, 1);

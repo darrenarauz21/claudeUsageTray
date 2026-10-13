@@ -40,6 +40,7 @@ sealed class TrayApp : ApplicationContext
         var menu = _menu;
         menu.Items.Add("Abrir", null, (_, _) => ShowForm());
         menu.Items.Add("Actualizar", null, async (_, _) => await RefreshAsync());
+        menu.Items.Add("Nueva sesión…", null, (_, _) => NewSession(null));
         menu.Items.Add("Agregar cuenta…", null, (_, _) => AddAccount());
         menu.Items.Add(new ToolStripSeparator());
         _startup = new ToolStripMenuItem("Iniciar con Windows", null, (_, _) => ToggleStartup()) { Checked = StartupRegistration.IsEnabled };
@@ -72,6 +73,7 @@ sealed class TrayApp : ApplicationContext
         _form.AddRequested += AddAccount;
         _form.RemoveRequested += RemoveAccount;
         _form.RenameRequested += RenameAccount;
+        _form.NewSessionRequested += NewSession;
         _form.ThemeChanged += () => { Menus.Apply(_menu, _form.Theme); UpdateTray(); };
         _form.SelectedChanged += account =>
         {
@@ -430,6 +432,37 @@ sealed class TrayApp : ApplicationContext
         SettingsStore.Save(_settings);
         Render();
         _form.Activate();
+    }
+
+    /// <summary>Desde una sesión, propone su cuenta y su carpeta; el resto, lo último elegido.</summary>
+    void NewSession(SessionInfo? from)
+    {
+        var initial = _settings.Launch;
+        if (from is not null)
+            initial = new LaunchOptions
+            {
+                ConfigDir = from.Account.ConfigDir, Folder = from.Cwd,
+                Model = initial.Model, Effort = initial.Effort, Advisor = initial.Advisor,
+            };
+        var recent = (_lastSessions ?? []).Select(s => s.Cwd).Prepend(initial.Folder ?? "");
+
+        _form.HoldOpen = true;
+        try
+        {
+            using var dialog = new NewSessionForm(_settings.Accounts, initial, recent, _form.Theme);
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+            _settings.Launch = dialog.Result;
+            SettingsStore.Save(_settings);
+            Launcher.Start(dialog.Result);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"No se pudo abrir la sesión: {ex.Message}", "Uso de Claude", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _form.HoldOpen = false;
+        }
     }
 
     void ToggleStartup()

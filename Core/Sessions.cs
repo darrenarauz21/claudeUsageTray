@@ -34,6 +34,10 @@ sealed class SessionInfo
     public DateTimeOffset? RetryAt { get; init; }
     public int RetryAttempt { get; init; }
     public int MaxRetries { get; init; }
+    /// <summary>Modelo, esfuerzo y asesor de la última respuesta (campos no documentados del .jsonl).</summary>
+    public string? Model { get; init; }
+    public string? Effort { get; init; }
+    public string? Advisor { get; init; }
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Name : Title;
 }
@@ -130,6 +134,9 @@ sealed class SessionMonitor
             RetryAt = t.RetryAt,
             RetryAttempt = t.RetryAttempt,
             MaxRetries = t.MaxRetries,
+            Model = t.Model,
+            Effort = t.Effort,
+            Advisor = t.Advisor,
         };
     }
 
@@ -222,6 +229,7 @@ sealed class SessionMonitor
         public TimeSpan? LastTurn;
         public string? ErrorText;
         public int RetryAttempt, MaxRetries;
+        public string? Model, Effort, Advisor;
 
         public void ReadNew()
         {
@@ -261,6 +269,7 @@ sealed class SessionMonitor
             LastTurn = null;
             ErrorText = null;
             RetryAttempt = MaxRetries = 0;
+            Model = Effort = Advisor = null;
         }
 
         void Apply(string line)
@@ -349,6 +358,11 @@ sealed class SessionMonitor
                 PendingTool = null;
                 return;
             }
+
+            // Sin asesor, advisorModel no viene: cada respuesta trae el estado completo.
+            if (Json.Str(m, "model") is { } model && !model.StartsWith('<')) Model = model;
+            Effort = Json.Str(r, "effort") ?? Effort;
+            Advisor = Json.Str(r, "advisorModel");
 
             foreach (var item in content.EnumerateArray())
             {

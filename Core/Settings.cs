@@ -45,6 +45,8 @@ sealed class AppSettings
     public string SoundPack { get; set; } = "clasico";
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
+    /// <summary>Lo último elegido en «Nueva sesión».</summary>
+    public LaunchOptions Launch { get; set; } = new();
 }
 
 static class SettingsStore
