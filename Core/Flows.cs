@@ -35,6 +35,23 @@ static class Flows
     public static bool Thinking(SessionInfo s) =>
         s.State == SessionState.Working && (s.Flow.Count == 0 || s.Flow[^1].Done);
 
+    static double Bump(double t, double from, double to) =>
+        t < from || t > to ? 0 : Math.Sin(Math.PI * (t - from) / (to - from));
+
+    /// <summary>Latido de «Pensando»: dos golpes (el segundo más suave) y una pausa. De 0 a 1.</summary>
+    public static double Heartbeat(long tick)
+    {
+        var t = tick % 1100 / 1100.0;
+        return Math.Max(Bump(t, 0, 0.16), 0.7 * Bump(t, 0.22, 0.38));
+    }
+
+    /// <summary>Altura del salto de cada uno de los tres puntos, uno detrás del otro. De 0 a 1.</summary>
+    public static double DotBounce(long tick, int index)
+    {
+        var t = (tick % 1000 / 1000.0 - index * 0.16 + 1) % 1;
+        return Bump(t, 0, 0.4);
+    }
+
     public static string KindLabel(ToolKind kind) => kind switch
     {
         ToolKind.Read => "Leer",

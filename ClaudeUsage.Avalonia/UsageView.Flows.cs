@@ -37,6 +37,24 @@ sealed partial class UsageView
         dc.DrawEllipse(Gfx.B(SD.Color.FromArgb((int)(110 * (1 - wave)), color)), null, box.Inflate(grow));
     }
 
+    /// <summary>Nodo «Pensando»: crece y suelta una onda con cada golpe del latido; tres puntos saltan dentro.</summary>
+    void DrawThinking(DrawingContext dc, Point center, double circle)
+    {
+        var tick = Environment.TickCount64;
+        var beat = Flows.Heartbeat(tick);
+        var radius = circle / 2 * (1 + 0.16 * beat);
+        dc.DrawEllipse(Gfx.B(SD.Color.FromArgb((int)(120 * beat), _t.Accent)), null, center, radius + 10 * beat, radius + 10 * beat);
+        dc.DrawEllipse(Gfx.B(_t.Accent), null, center, radius, radius);
+        DrawDots(dc, center, _t.Background, tick);
+    }
+
+    /// <summary>Tres puntos que saltan uno detrás del otro, centrados en el punto dado.</summary>
+    static void DrawDots(DrawingContext dc, Point center, SD.Color color, long tick)
+    {
+        for (var i = 0; i < 3; i++)
+            dc.DrawEllipse(Gfx.B(color), null, new Point(center.X + (i - 1) * 5.5, center.Y - 3.5 * Flows.DotBounce(tick, i)), 1.8, 1.8);
+    }
+
     double ComposeFlows(DrawingContext? dc, double y)
     {
         if (_flowSession is { } id)
@@ -197,13 +215,11 @@ sealed partial class UsageView
         }
         if (thinking)
         {
+            // El modelo está generando el siguiente paso: el nodo late y tres puntos saltan dentro.
             var cx = centers[index++];
             if (dc is not null)
             {
-                var box = new Rect(cx - circle / 2, y, circle, circle);
-                DrawHalo(dc, box, _t.Accent, 8);
-                dc.DrawEllipse(Gfx.B(_t.Background), Gfx.P(_t.Accent, 2), box);
-                DrawSpinner(dc, box);
+                DrawThinking(dc, new Point(cx, cy), circle);
                 Gfx.Write(dc, "Pensando…", Gfx.Tiny, _t.Text, new Rect(cx - column / 2, y + circle + 4, column, tiny), TextAlignment.Center);
             }
         }
@@ -287,7 +303,7 @@ sealed partial class UsageView
 
             var (status, color) = s.State switch
             {
-                SessionState.Working => (thinking || active is null ? "Pensando…" : active.Verb, _t.Accent),
+                SessionState.Working => (thinking || active is null ? "Pensando" : active.Verb, _t.Accent),
                 SessionState.Waiting => ("Le espera a usted", _t.Warn),
                 SessionState.Failed => ("Falló", _t.Danger),
                 SessionState.Done => ("Terminó", _t.Success),
@@ -295,14 +311,19 @@ sealed partial class UsageView
             };
             if (working)
             {
-                var wave = Wave(1400);
-                Gfx.Fill(dc, SD.Color.FromArgb((int)(70 * (1 - wave)), color), session.Inflate(6 * wave), 10 + 6 * wave);
+                // Mientras piensa, el recuadro late con el mismo ritmo que el nodo «Pensando».
+                var wave = thinking ? Flows.Heartbeat(Environment.TickCount64) : Wave(1400);
+                var grow = (thinking ? 8 : 6) * wave;
+                var alpha = thinking ? (int)(120 * wave) : (int)(70 * (1 - wave));
+                Gfx.Fill(dc, SD.Color.FromArgb(alpha, color), session.Inflate(grow), 10 + grow);
             }
             Gfx.Fill(dc, _t.Raised, session, 10);
             Gfx.Outline(dc, working ? color : _t.Border, session, 10);
             var inner = session.Deflate(new Thickness(9, 6));
             Gfx.Write(dc, "Sesión", Gfx.Small, _t.Text, new Rect(inner.X, inner.Y, inner.Width, small));
             Gfx.Write(dc, status, Gfx.Tiny, color, new Rect(inner.X, inner.Y + small + 1, inner.Width, tiny));
+            if (thinking)
+                DrawDots(dc, new Point(inner.X + Gfx.Measure(status, Gfx.Tiny).Width + 9, inner.Y + small + 1 + tiny * 0.62), color, Environment.TickCount64);
             Gfx.Write(dc, s.Flow.Count == 1 ? "1 paso" : $"{s.Flow.Count} pasos", Gfx.Tiny, _t.Tertiary, new Rect(inner.X, inner.Y + small + tiny + 2, inner.Width, tiny));
 
             for (var i = 0; i < Flows.MapKinds.Length; i++)

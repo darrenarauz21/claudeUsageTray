@@ -37,6 +37,34 @@ sealed partial class UsageForm
         g.FillEllipse(brush, box.X - grow, box.Y - grow, box.Width + 2 * grow, box.Height + 2 * grow);
     }
 
+    /// <summary>Nodo «Pensando»: crece y suelta una onda con cada golpe del latido; tres puntos saltan dentro.</summary>
+    void DrawThinking(Graphics g, PointF center, int circle)
+    {
+        var tick = Environment.TickCount64;
+        var beat = (float)Flows.Heartbeat(tick);
+        var size = circle * (1 + 0.16f * beat);
+        var box = new RectangleF(center.X - size / 2, center.Y - size / 2, size, size);
+        var wave = S(10) * beat;
+        using (var halo = new SolidBrush(Color.FromArgb((int)(120 * beat), _t.Accent)))
+            g.FillEllipse(halo, RectangleF.Inflate(box, wave, wave));
+        using (var fill = new SolidBrush(_t.Accent)) g.FillEllipse(fill, box);
+        DrawDots(g, center, _t.Background, tick);
+    }
+
+    /// <summary>Tres puntos que saltan uno detrás del otro, centrados en el punto dado.</summary>
+    void DrawDots(Graphics g, PointF center, Color color, long tick)
+    {
+        var r = Math.Max(1.5f, 1.8f * _scale);
+        var gap = 5.5f * _scale;
+        using var brush = new SolidBrush(color);
+        for (var i = 0; i < 3; i++)
+        {
+            var x = center.X + (i - 1) * gap;
+            var y = center.Y - (float)(3.5 * _scale * Flows.DotBounce(tick, i));
+            g.FillEllipse(brush, x - r, y - r, 2 * r, 2 * r);
+        }
+    }
+
     int ComposeFlows(Graphics g, bool draw, int y)
     {
         if (_flowSession is { } id)
@@ -212,18 +240,12 @@ sealed partial class UsageForm
         }
         if (thinking)
         {
-            // El modelo está generando el siguiente paso: un nodo vacío con el asterisco que gira.
+            // El modelo está generando el siguiente paso: el nodo late y tres puntos saltan dentro.
             var cx = centers[index++];
+            if (draw) DrawThinking(g, new PointF(cx, cy), circle);
             if (draw)
-            {
-                var box = new RectangleF(cx - circle / 2f, y, circle, circle);
-                DrawHalo(g, box, _t.Accent, S(8));
-                using (var brush = new SolidBrush(_t.Background)) g.FillEllipse(brush, box);
-                using (var pen = new Pen(_t.Accent, S(2))) g.DrawEllipse(pen, box);
-                DrawSpinner(g, Rectangle.Round(box));
                 Write(g, "Pensando…", Tiny, _t.Text, new Rectangle(cx - column / 2, y + circle + S(4), column, tinyHeight),
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
-            }
         }
         y += circle + S(4) + 2 * tinyHeight;
 
@@ -307,7 +329,7 @@ sealed partial class UsageForm
 
             var (status, color) = s.State switch
             {
-                SessionState.Working => (thinking || active is null ? "Pensando…" : active.Verb, _t.Accent),
+                SessionState.Working => (thinking || active is null ? "Pensando" : active.Verb, _t.Accent),
                 SessionState.Waiting => ("Le espera a usted", _t.Warn),
                 SessionState.Failed => ("Falló", _t.Danger),
                 SessionState.Done => ("Terminó", _t.Success),
@@ -315,15 +337,23 @@ sealed partial class UsageForm
             };
             if (working)
             {
-                var wave = Environment.TickCount64 % 1400 / 1400.0;
-                var grow = (int)(S(6) * wave);
-                Draw.Fill(g, Color.FromArgb((int)(70 * (1 - wave)), color), Rectangle.Inflate(session, grow, grow), S(10) + grow);
+                // Mientras piensa, el recuadro late con el mismo ritmo que el nodo «Pensando».
+                var wave = thinking ? Flows.Heartbeat(Environment.TickCount64) : Environment.TickCount64 % 1400 / 1400.0;
+                var grow = (int)(S(thinking ? 8 : 6) * wave);
+                var alpha = thinking ? (int)(120 * wave) : (int)(70 * (1 - wave));
+                Draw.Fill(g, Color.FromArgb(alpha, color), Rectangle.Inflate(session, grow, grow), S(10) + grow);
             }
             Draw.Fill(g, _t.Raised, session, S(10));
             Draw.Outline(g, working ? color : _t.Border, session, S(10));
             var inner = Rectangle.Inflate(session, -S(9), -S(6));
             Write(g, "Sesión", _small, _t.Text, new Rectangle(inner.X, inner.Y, inner.Width, smallHeight));
-            Write(g, status, Tiny, color, new Rectangle(inner.X, inner.Y + smallHeight + S(1), inner.Width, Tiny.Height), TextFormatFlags.EndEllipsis);
+            var statusBox = new Rectangle(inner.X, inner.Y + smallHeight + S(1), inner.Width, Tiny.Height);
+            Write(g, status, Tiny, color, statusBox, TextFormatFlags.EndEllipsis);
+            if (thinking)
+            {
+                var textWidth = TextRenderer.MeasureText(g, status, Tiny, Size.Empty, Line).Width;
+                DrawDots(g, new PointF(statusBox.X + textWidth + 9 * _scale, statusBox.Y + statusBox.Height * 0.62f), color, Environment.TickCount64);
+            }
             var steps = s.Flow.Count == 1 ? "1 paso" : $"{s.Flow.Count} pasos";
             Write(g, steps, Tiny, _t.Tertiary, new Rectangle(inner.X, inner.Y + smallHeight + Tiny.Height + S(2), inner.Width, Tiny.Height));
 
