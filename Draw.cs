@@ -45,6 +45,17 @@ static class Draw
         g.DrawPath(pen, path);
     }
 
+    /// <summary>Un círculo del color dado, para el menú de paletas.</summary>
+    public static Bitmap Swatch(Color color, int size)
+    {
+        var bmp = new Bitmap(size, size);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var brush = new SolidBrush(color);
+        g.FillEllipse(brush, 1, 1, size - 2, size - 2);
+        return bmp;
+    }
+
     /// <summary>Ícono de la bandeja: el porcentaje de la sesión sobre un cuadro redondeado.</summary>
     public static Icon TrayIcon(double? percent, Color color)
     {

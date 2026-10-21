@@ -206,7 +206,7 @@ sealed class ToastView(Notice notice, Theme theme) : Control
         var art = new Rect(12, (Bounds.Height - 64) / 2, 78, 64);
         const double unit = 3;
         Gfx.Pixels(dc, art.X + (art.Width - ToastSprite.Columns * unit) / 2, art.Y + (art.Height - ToastSprite.Rows * unit) / 2, unit,
-            fill => ToastSprite.Paint(fill, notice.Kind, Environment.TickCount64 - _born));
+            fill => ToastSprite.Paint(fill, notice.Kind, Environment.TickCount64 - _born, t.Accent));
 
         var x = art.Right + 12;
         var width = Bounds.Width - x - 34;

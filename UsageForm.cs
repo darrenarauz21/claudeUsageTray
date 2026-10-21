@@ -18,7 +18,7 @@ sealed partial class UsageForm : Form
     public event Action<SessionInfo>? NewSessionRequested;
     /// <summary>Las vistas fijas cambiaron (nombres de View, en orden).</summary>
     public event Action<IReadOnlyList<string>>? PinnedChanged;
-    /// <summary>Una acción de la vista Ajustes (notify, sound, pack, startup, sample, sounds, add, setup, diag, unsetup).</summary>
+    /// <summary>Una acción de la vista Ajustes (notify, sound, pack, palette, anim, startup, sample, sounds, add, setup, diag, unsetup).</summary>
     public event Action<string>? SettingRequested;
 
     /// <summary>Mientras hay un diálogo abierto, perder el foco no cierra la ventana.</summary>
@@ -54,7 +54,8 @@ sealed partial class UsageForm : Form
     IReadOnlyDictionary<string, Profile> _profiles = new Dictionary<string, Profile>();
     IReadOnlyList<SessionInfo> _sessions = Array.Empty<SessionInfo>();
     ActivitySummary? _activity;
-    MascotFrame? _mascot;
+    RefreshFrame? _refresh;
+    string _refreshStyle = RefreshSprite.Styles[0].Id;
     LocalTotals? _local;
     DateTime? _updated;
     string? _selected;
@@ -135,9 +136,13 @@ sealed partial class UsageForm : Form
     void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
         if (e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color)) return;
-        var next = Theme.Current;
-        if (next.Dark == _t.Dark) return;
-        _t = next;
+        if (Theme.Current.Dark != _t.Dark) ApplyTheme();
+    }
+
+    /// <summary>Toma el tema del momento (modo del sistema y paleta elegida) y repinta.</summary>
+    public void ApplyTheme()
+    {
+        _t = Theme.Current;
         if (IsHandleCreated) Dwm.Apply(Handle, _t);
         Menus.Apply(_accountMenu, _t);
         Menus.Apply(_sessionMenu, _t);
@@ -204,9 +209,11 @@ sealed partial class UsageForm : Form
         Relayout();
     }
 
-    public void SetMascot(MascotFrame? frame)
+    /// <summary>El cuadro de la animación al actualizar (null: no está corriendo) y su estilo.</summary>
+    public void SetRefreshFrame(RefreshFrame? frame, string style)
     {
-        _mascot = frame;
+        _refresh = frame;
+        _refreshStyle = style;
         if (Visible) Invalidate();
     }
 
@@ -827,13 +834,13 @@ sealed partial class UsageForm : Form
         if (draw)
         {
             var right = gear.X - S(8);
-            // Mientras se actualiza, la mascota ocupa el lugar de la hora.
+            // Mientras se actualiza, la animación (la mascota u otro estilo) ocupa el lugar de la hora.
             var unit = Math.Max(1, (int)Math.Round(smallHeight / 8f));
-            var when = _mascot is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
-            var whenWidth = _mascot is not null ? Mascot.Columns * unit : TextRenderer.MeasureText(g, when, _small, Size.Empty, Line).Width;
+            var when = _refresh is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
+            var whenWidth = _refresh is not null ? RefreshArt.Columns * unit : TextRenderer.MeasureText(g, when, _small, Size.Empty, Line).Width;
             Write(g, Format.Local(_local), _small, _t.Tertiary, new Rectangle(Pad, y, right - Pad - whenWidth - S(12), smallHeight), TextFormatFlags.EndEllipsis);
-            if (_mascot is { } frame)
-                Mascot.Draw(g, right - whenWidth, y + (smallHeight - Mascot.Rows * unit) / 2, unit, frame);
+            if (_refresh is { } frame)
+                RefreshArt.Draw(g, right - whenWidth, y + (smallHeight - RefreshArt.Rows * unit) / 2, unit, _refreshStyle, frame, _t.Accent);
             else
                 Write(g, when, _small, _t.Tertiary, new Rectangle(right - whenWidth, y, whenWidth, smallHeight));
 

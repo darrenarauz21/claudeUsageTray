@@ -21,8 +21,8 @@ sealed class TrayController
     readonly DispatcherTimer _sessionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly SessionMonitor _monitor = new();
     readonly ActivityTracker _activity = new();
-    readonly MascotAnimator _mascot = new();
-    readonly Dictionary<MascotFrame, WindowIcon> _mascotIcons = new();
+    readonly RefreshAnimator _refresh = new();
+    readonly Dictionary<RefreshFrame, WindowIcon> _refreshIcons = new();
     readonly AppSettings _settings;
     readonly Dictionary<string, UsageSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, Profile> _profiles = new(StringComparer.OrdinalIgnoreCase);
@@ -30,7 +30,7 @@ sealed class TrayController
     readonly ToastStack _toasts = new();
     readonly Sounds _sounds = new();
 
-    Theme _theme;
+    Theme _theme = Theme.Light;
     LocalTotals? _local;
     DateTime? _updated;
     bool _busy, _scanning, _counting;
@@ -49,14 +49,10 @@ sealed class TrayController
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
 
-        _theme = Theme.ForDark(app.ActualThemeVariant == ThemeVariant.Dark);
-        _popup.ApplyTheme(_theme);
-        app.ActualThemeVariantChanged += (_, _) =>
-        {
-            _theme = Theme.ForDark(app.ActualThemeVariant == ThemeVariant.Dark);
-            _popup.ApplyTheme(_theme);
-            UpdateTray();
-        };
+        Theme.SelectedPalette = _settings.Palette;
+        _refresh.Style = _settings.Animation;
+        ApplyTheme();
+        app.ActualThemeVariantChanged += (_, _) => ApplyTheme();
 
         // Menú del ícono: corto; lo demás está en la vista Ajustes (engranaje del pie).
         var menu = new NativeMenu();
@@ -113,17 +109,9 @@ sealed class TrayController
             if (_popup.IsVisible) _ = ScanSessionsAsync();
         };
 
-        // La mascota ocupa el ícono y la hora del pie mientras se actualiza.
-        _mascot.FrameChanged += () =>
-        {
-            if (_mascot.Frame is { } frame)
-            {
-                if (!_mascotIcons.TryGetValue(frame, out var icon)) _mascotIcons[frame] = icon = Gfx.MascotIcon(frame);
-                _tray.Icon = icon;
-            }
-            View.SetMascot(_mascot.Frame);
-        };
-        _mascot.Completed += () =>
+        // La animación (la mascota u otro estilo) ocupa el ícono y la hora del pie mientras se actualiza.
+        _refresh.FrameChanged += ShowRefreshFrame;
+        _refresh.Completed += () =>
         {
             _pendingApply?.Invoke();
             _pendingApply = null;
@@ -154,7 +142,7 @@ sealed class TrayController
         if (_busy) return;
         _busy = true;
         View.SetBusy(true);
-        _mascot.Start();
+        _refresh.Start();
         try
         {
             if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
@@ -164,7 +152,7 @@ sealed class TrayController
             var local = await Task.Run(() => LocalUsage.ScanToday(accounts.Select(a => a.ConfigDir)));
             var updated = DateTime.Now;
 
-            // Los datos nuevos se aplican cuando la mascota termina, no antes.
+            // Los datos nuevos se aplican cuando la animación termina, no antes.
             _pendingApply = () =>
             {
                 for (var i = 0; i < accounts.Count; i++)
@@ -185,7 +173,7 @@ sealed class TrayController
         {
             _busy = false;
             View.SetBusy(false);
-            _mascot.Finish();
+            _refresh.Finish();
         }
     }
 
@@ -227,12 +215,16 @@ sealed class TrayController
     {
         var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
         View.SetSettingsState(new UsageView.SettingsState(
-            _settings.Notifications, _settings.Sound, pack, StartupRegistration.IsEnabled, _settings.Accounts.Count), _settings.SoundPack);
+                _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
+                RefreshSprite.Label(_settings.Animation), StartupRegistration.IsEnabled, _settings.Accounts.Count),
+            _settings.SoundPack, _settings.Palette, _settings.Animation);
     }
 
     async Task OnSettingAsync(string action)
     {
         if (action.StartsWith("pack:", StringComparison.Ordinal)) SetSoundPack(action[5..]);
+        else if (action.StartsWith("palette:", StringComparison.Ordinal)) SetPalette(action[8..]);
+        else if (action.StartsWith("anim:", StringComparison.Ordinal)) SetAnimation(action[5..]);
         else
         {
             switch (action)
@@ -300,6 +292,46 @@ sealed class TrayController
         _settings.SoundPack = pack;
         SettingsStore.Save(_settings);
         _sounds.Play(NoticeKind.Done, pack, force: true);
+    }
+
+    void SetPalette(string palette)
+    {
+        _settings.Palette = palette;
+        SettingsStore.Save(_settings);
+        Theme.SelectedPalette = palette;
+        ApplyTheme();
+    }
+
+    void SetAnimation(string style)
+    {
+        _settings.Animation = style;
+        SettingsStore.Save(_settings);
+        _refresh.Style = style;
+        _refreshIcons.Clear();
+        ShowRefreshFrame();
+        _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
+    }
+
+    /// <summary>Toma el tema del momento (modo del sistema y paleta elegida): ventana, ícono y animación.</summary>
+    void ApplyTheme()
+    {
+        _theme = Theme.ForDark(_app.ActualThemeVariant == ThemeVariant.Dark);
+        _popup.ApplyTheme(_theme);
+        _refreshIcons.Clear(); // se vuelven a dibujar con el acento nuevo
+        ShowRefreshFrame();
+        UpdateTray();
+    }
+
+    /// <summary>El cuadro actual de la animación en el ícono y en el pie de la ventana.</summary>
+    void ShowRefreshFrame()
+    {
+        if (_refresh.Frame is { } frame)
+        {
+            if (!_refreshIcons.TryGetValue(frame, out var icon))
+                _refreshIcons[frame] = icon = Gfx.RefreshIcon(_refresh.Style, frame, _theme.Accent);
+            _tray.Icon = icon;
+        }
+        View.SetRefreshFrame(_refresh.Frame, _refresh.Style);
     }
 
     void ToggleNotifications()
@@ -372,7 +404,7 @@ sealed class TrayController
         if (selected is not null) _snapshots.TryGetValue(selected.ConfigDir, out snap);
         var session = snap?.Session;
 
-        if (!_mascot.Running)
+        if (!_refresh.Running)
         {
             SD.Color color = session is null || snap!.Error is not null ? _theme.Tertiary : _theme.For(session.Percent, session.Severity);
             _tray.Icon = Gfx.PercentIcon(session?.Percent, color);
@@ -539,7 +571,7 @@ sealed class TrayController
         _sessionTimer.Stop();
         _toasts.CloseAll();
         _sounds.Dispose();
-        _mascot.Dispose();
+        _refresh.Dispose();
         _tray.IsVisible = false;
         _tray.Dispose();
         if (_app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime) lifetime.Shutdown();

@@ -8,13 +8,15 @@ sealed class TrayApp : ApplicationContext
     readonly System.Windows.Forms.Timer _sessionTimer = new() { Interval = 1500 };
     readonly SessionMonitor _monitor = new();
     readonly ActivityTracker _activity = new();
-    readonly MascotAnimator _mascot = new();
-    readonly Dictionary<MascotFrame, Icon> _mascotIcons = new();
+    readonly RefreshAnimator _refresh = new();
+    readonly Dictionary<RefreshFrame, Icon> _refreshIcons = new();
     readonly AppSettings _settings;
     readonly Dictionary<string, UsageSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, Profile> _profiles = new(StringComparer.OrdinalIgnoreCase);
     readonly ContextMenuStrip _menu = new();
     readonly ContextMenuStrip _packMenu = new();
+    readonly ContextMenuStrip _paletteMenu = new();
+    readonly ContextMenuStrip _animationMenu = new();
     readonly NoticeDetector _detector = new();
     readonly ToastManager _toasts = new();
     readonly Sounds _sounds = new();
@@ -33,6 +35,10 @@ sealed class TrayApp : ApplicationContext
         if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
+        // La ventana se creó con la paleta por defecto: toma la elegida.
+        Theme.SelectedPalette = _settings.Palette;
+        _form.ApplyTheme();
+        _refresh.Style = _settings.Animation;
 
         // El menú del ícono queda corto: lo demás está en la vista Ajustes (botón del pie).
         var menu = _menu;
@@ -43,11 +49,15 @@ sealed class TrayApp : ApplicationContext
         menu.Items.Add("Ajustes…", null, (_, _) => { ShowForm(); _form.ShowSettings(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Salir", null, (_, _) => Quit());
-        Menus.Apply(menu, _form.Theme);
         foreach (var (id, label) in Sounds.Packs)
             _packMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetSoundPack(id)) { Tag = id });
-        _packMenu.Closed += (_, _) => _form.HoldOpen = false;
-        Menus.Apply(_packMenu, _form.Theme);
+        foreach (var (id, label, _, _) in Theme.Palettes)
+            _paletteMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetPalette(id)) { Tag = id });
+        foreach (var (id, label) in RefreshSprite.Styles)
+            _animationMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetAnimation(id)) { Tag = id });
+        foreach (var choices in new[] { _packMenu, _paletteMenu, _animationMenu })
+            choices.Closed += (_, _) => _form.HoldOpen = false;
+        ApplyMenus();
 
         _tray.ContextMenuStrip = menu;
         _tray.Text = "Uso de Claude";
@@ -60,7 +70,7 @@ sealed class TrayApp : ApplicationContext
         _form.RemoveRequested += RemoveAccount;
         _form.RenameRequested += RenameAccount;
         _form.NewSessionRequested += NewSession;
-        _form.ThemeChanged += () => { Menus.Apply(_menu, _form.Theme); Menus.Apply(_packMenu, _form.Theme); UpdateTray(); };
+        _form.ThemeChanged += () => { ApplyMenus(); ClearRefreshIcons(); UpdateTray(); };
         _form.SetPinned(_settings.PinnedViews);
         _form.PinnedChanged += views =>
         {
@@ -88,18 +98,10 @@ sealed class TrayApp : ApplicationContext
             _sessionTimer.Interval = _form.Visible ? 1500 : 3000;
             if (_form.Visible) await ScanSessionsAsync();
         };
-        // La mascota ocupa el ícono y la hora del pie mientras se actualiza; el estado nuevo se
-        // muestra cuando termina.
-        _mascot.FrameChanged += () =>
-        {
-            if (_mascot.Frame is { } frame)
-            {
-                if (!_mascotIcons.TryGetValue(frame, out var icon)) _mascotIcons[frame] = icon = Mascot.Icon(frame);
-                _tray.Icon = icon;
-            }
-            _form.SetMascot(_mascot.Frame);
-        };
-        _mascot.Completed += () =>
+        // La animación (la mascota u otro estilo) ocupa el ícono y la hora del pie mientras se
+        // actualiza; el estado nuevo se muestra cuando termina.
+        _refresh.FrameChanged += ShowRefreshFrame;
+        _refresh.Completed += () =>
         {
             _pendingApply?.Invoke();
             _pendingApply = null;
@@ -136,7 +138,7 @@ sealed class TrayApp : ApplicationContext
         if (_busy) return;
         _busy = true;
         _form.SetBusy(true);
-        _mascot.Start();
+        _refresh.Start();
         try
         {
             if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
@@ -147,7 +149,7 @@ sealed class TrayApp : ApplicationContext
             var local = await Task.Run(() => LocalUsage.ScanToday(accounts.Select(a => a.ConfigDir)));
             var updated = DateTime.Now;
 
-            // Los datos nuevos se aplican cuando la mascota termina, no antes.
+            // Los datos nuevos se aplican cuando la animación termina, no antes.
             _pendingApply = () =>
             {
                 for (var i = 0; i < accounts.Count; i++)
@@ -169,7 +171,7 @@ sealed class TrayApp : ApplicationContext
         {
             _busy = false;
             _form.SetBusy(false);
-            _mascot.Finish(); // al terminar la animación llama a Render
+            _refresh.Finish(); // al terminar la animación llama a Render
         }
     }
 
@@ -222,7 +224,8 @@ sealed class TrayApp : ApplicationContext
     {
         var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
         _form.SetSettingsState(new UsageForm.SettingsState(
-            _settings.Notifications, _settings.Sound, pack, StartupRegistration.IsEnabled, _settings.Accounts.Count));
+            _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
+            RefreshSprite.Label(_settings.Animation), StartupRegistration.IsEnabled, _settings.Accounts.Count));
     }
 
     void OnSetting(string action)
@@ -231,7 +234,9 @@ sealed class TrayApp : ApplicationContext
         {
             case "notify": ToggleNotifications(); break;
             case "sound": ToggleSound(); break;
-            case "pack": ShowPackMenu(); break;
+            case "pack": ShowChoiceMenu(_packMenu, _settings.SoundPack); break;
+            case "palette": ShowChoiceMenu(_paletteMenu, _settings.Palette); break;
+            case "anim": ShowChoiceMenu(_animationMenu, _settings.Animation); break;
             case "startup": ToggleStartup(); break;
             case "sample": ShowNextSample(); break;
             case "sounds": OpenSoundsFolder(); break;
@@ -247,11 +252,66 @@ sealed class TrayApp : ApplicationContext
         PushSettings();
     }
 
-    void ShowPackMenu()
+    /// <summary>La lista de una opción de Ajustes (estilo de sonido, color, animación), con la elegida marcada.</summary>
+    void ShowChoiceMenu(ContextMenuStrip choices, string selected)
     {
-        foreach (ToolStripMenuItem item in _packMenu.Items) item.Checked = (string?)item.Tag == _settings.SoundPack;
+        foreach (ToolStripMenuItem item in choices.Items) item.Checked = (string?)item.Tag == selected;
         _form.HoldOpen = true;
-        _packMenu.Show(Cursor.Position);
+        choices.Show(Cursor.Position);
+    }
+
+    /// <summary>Colores del tema en todos los menús; el de la paleta, con un punto de cada color en el modo actual.</summary>
+    void ApplyMenus()
+    {
+        var theme = _form.Theme;
+        foreach (var menu in new[] { _menu, _packMenu, _paletteMenu, _animationMenu }) Menus.Apply(menu, theme);
+        _paletteMenu.ShowImageMargin = true;
+        foreach (ToolStripMenuItem item in _paletteMenu.Items)
+        {
+            var palette = Theme.Palettes.First(p => p.Id == (string?)item.Tag);
+            item.Image?.Dispose();
+            item.Image = Draw.Swatch(theme.Dark ? palette.Dark : palette.Light, 16);
+        }
+    }
+
+    void SetPalette(string palette)
+    {
+        _settings.Palette = palette;
+        SettingsStore.Save(_settings);
+        Theme.SelectedPalette = palette;
+        _form.ApplyTheme(); // repinta la ventana; ThemeChanged rehace los menús, el ícono y la animación
+        PushSettings();
+    }
+
+    void SetAnimation(string style)
+    {
+        _settings.Animation = style;
+        SettingsStore.Save(_settings);
+        _refresh.Style = style;
+        ClearRefreshIcons();
+        PushSettings();
+        _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
+    }
+
+    /// <summary>El cuadro actual de la animación en el ícono y en el pie de la ventana.</summary>
+    void ShowRefreshFrame()
+    {
+        if (_refresh.Frame is { } frame)
+        {
+            if (!_refreshIcons.TryGetValue(frame, out var icon))
+                _refreshIcons[frame] = icon = RefreshArt.Icon(_refresh.Style, frame, _form.Theme.Accent);
+            _tray.Icon = icon;
+        }
+        _form.SetRefreshFrame(_refresh.Frame, _refresh.Style);
+    }
+
+    /// <summary>Con otro estilo u otra paleta, los íconos de la animación se vuelven a dibujar.</summary>
+    void ClearRefreshIcons()
+    {
+        var old = _refreshIcons.Values.ToList();
+        _refreshIcons.Clear();
+        ShowRefreshFrame(); // si está animando, el ícono pasa ya al nuevo antes de soltar el viejo
+        foreach (var icon in old) icon.Dispose();
     }
 
     void ToggleSound()
@@ -347,7 +407,7 @@ sealed class TrayApp : ApplicationContext
         var session = snap?.Session;
 
         var theme = _form.Theme;
-        if (_mascot.Running) { } // el ícono es de la mascota hasta que termine
+        if (_refresh.Running) { } // el ícono es de la animación hasta que termine
         else if (session is null) SetIcon(null, theme.Tertiary);
         else SetIcon(session.Percent, snap!.Error is null ? theme.For(session.Percent, session.Severity) : theme.Tertiary);
 
@@ -571,8 +631,8 @@ sealed class TrayApp : ApplicationContext
         _sessionTimer.Stop();
         _toasts.CloseAll();
         _sounds.Dispose();
-        _mascot.Dispose();
-        foreach (var icon in _mascotIcons.Values) icon.Dispose();
+        _refresh.Dispose();
+        foreach (var icon in _refreshIcons.Values) icon.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         _form.Dispose();

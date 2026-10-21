@@ -43,6 +43,10 @@ sealed class AppSettings
     public bool Notifications { get; set; } = true;
     public bool Sound { get; set; } = true;
     public string SoundPack { get; set; } = "clasico";
+    /// <summary>Paleta del acento (Theme.Palettes).</summary>
+    public string Palette { get; set; } = "claude";
+    /// <summary>Animación al actualizar (RefreshSprite.Styles).</summary>
+    public string Animation { get; set; } = "mascota";
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
     /// <summary>Lo último elegido en «Nueva sesión».</summary>

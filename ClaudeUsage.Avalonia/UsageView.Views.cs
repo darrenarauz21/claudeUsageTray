@@ -11,7 +11,7 @@ sealed partial class UsageView
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
     /// <summary>Lo que muestra «Ajustes»; lo manda TrayController cada vez que cambia algo.</summary>
-    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, bool StartWithSystem, int Accounts);
+    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation, bool StartWithSystem, int Accounts);
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -19,8 +19,8 @@ sealed partial class UsageView
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rect _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", false, 0);
-    string _soundPackId = "";
+    SettingsState _settingsState = new(true, true, "", "", "", false, 0);
+    string _soundPackId = "", _paletteId = "", _animationId = "";
 
     static string ViewLabel(View view) => view switch
     {
@@ -41,10 +41,13 @@ sealed partial class UsageView
         Relayout();
     }
 
-    public void SetSettingsState(SettingsState state, string soundPackId)
+    /// <summary>Los Id marcan la opción elegida en cada lista.</summary>
+    public void SetSettingsState(SettingsState state, string soundPackId, string paletteId, string animationId)
     {
         _settingsState = state;
         _soundPackId = soundPackId;
+        _paletteId = paletteId;
+        _animationId = animationId;
         if (_view == View.Settings) InvalidateVisual();
     }
 
@@ -192,6 +195,10 @@ sealed partial class UsageView
         y = ChoiceRow(dc, "Estilo de sonido", "pack", s.SoundPack, y);
         y = LinksRow(dc, y, ("Ver un aviso de ejemplo", "sample"), ("Abrir carpeta de sonidos", "sounds"));
 
+        y = SettingsCaption(dc, "Apariencia", y + 10);
+        y = ChoiceRow(dc, "Color", "palette", s.Palette, y, swatch: _t.Accent);
+        y = ChoiceRow(dc, "Animación al actualizar", "anim", s.Animation, y);
+
         y = SettingsCaption(dc, "Cuentas", y + 10);
         y = LinkRow(dc, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);
 
@@ -227,7 +234,8 @@ sealed partial class UsageView
         return y + height;
     }
 
-    double ChoiceRow(DrawingContext? dc, string label, string key, string value, double y)
+    /// <summary>Una opción con lista; swatch pone un punto de ese color antes del valor (la paleta).</summary>
+    double ChoiceRow(DrawingContext? dc, string label, string key, string value, double y, SD.Color? swatch = null)
     {
         const double height = 32;
         var row = new Rect(Pad - 8, y, Inner + 16, height);
@@ -237,7 +245,10 @@ sealed partial class UsageView
             if (_hoverKey == "set:" + key) Gfx.Fill(dc, _t.Hover, row, 8);
             Gfx.Write(dc, label, Gfx.Body, _t.Text, new Rect(Pad, y, Inner / 2, height), center: true);
             var valueWidth = Gfx.Measure(value, Gfx.Body).Width;
-            Gfx.Write(dc, value, Gfx.Body, _t.Secondary, new Rect(Pad + Inner - 18 - valueWidth, y, valueWidth + 2, height), center: true);
+            var valueX = Pad + Inner - 18 - valueWidth;
+            Gfx.Write(dc, value, Gfx.Body, _t.Secondary, new Rect(valueX, y, valueWidth + 2, height), center: true);
+            if (swatch is { } color)
+                dc.DrawEllipse(Gfx.B(color), null, new Rect(valueX - 8 - 12, y + (height - 12) / 2, 12, 12));
             Gfx.Icon(dc, Glyph.ChevronDown, _t.Secondary, new Rect(Pad + Inner - 14, y, 14, height), 12);
         }
         return y + height;
@@ -277,13 +288,26 @@ sealed partial class UsageView
         return y + height;
     }
 
-    void ShowPackMenu()
+    /// <summary>La lista de la opción de Ajustes con esa clave (pack, palette, anim); elegir manda «clave:id».</summary>
+    void ShowChoiceMenu(string key)
     {
-        var menu = new ContextMenu();
-        foreach (var (id, label) in Sounds.Packs)
+        IEnumerable<(string Id, string Label)> choices = key switch
         {
-            var item = new MenuItem { Header = (id == _soundPackId ? "✓  " : "     ") + label };
-            item.Click += (_, _) => SettingRequested?.Invoke("pack:" + id);
+            "palette" => ClaudeUsageTray.Theme.Palettes.Select(p => (p.Id, p.Label)),
+            "anim" => RefreshSprite.Styles,
+            _ => Sounds.Packs,
+        };
+        var selected = key switch { "palette" => _paletteId, "anim" => _animationId, _ => _soundPackId };
+        var menu = new ContextMenu();
+        foreach (var (id, label) in choices)
+        {
+            var item = new MenuItem { Header = (id == selected ? "✓  " : "     ") + label };
+            if (key == "palette") // cada paleta con un punto de su color en el modo actual
+            {
+                var palette = ClaudeUsageTray.Theme.Palettes.First(p => p.Id == id);
+                item.Icon = new Avalonia.Controls.Shapes.Ellipse { Width = 12, Height = 12, Fill = Gfx.B(_t.Dark ? palette.Dark : palette.Light) };
+            }
+            item.Click += (_, _) => SettingRequested?.Invoke(key + ":" + id);
             menu.Items.Add(item);
         }
         menu.Open(this);

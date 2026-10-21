@@ -5,7 +5,7 @@ static class ToastArt
 {
     public const int Columns = ToastSprite.Columns, Rows = ToastSprite.Rows;
 
-    public static void Draw(Graphics g, Rectangle bounds, NoticeKind kind, long t)
+    public static void Draw(Graphics g, Rectangle bounds, NoticeKind kind, long t, Color body)
     {
         var unit = Math.Max(1, Math.Min(bounds.Width / Columns, bounds.Height / Rows));
         var x0 = bounds.X + (bounds.Width - Columns * unit) / 2;
@@ -17,7 +17,7 @@ static class ToastArt
             {
                 if (!brushes.TryGetValue(color, out var brush)) brushes[color] = brush = new SolidBrush(color);
                 g.FillRectangle(brush, x0 + x * unit, y0 + y * unit, w * unit, h * unit);
-            }, kind, t);
+            }, kind, t, body);
         }
         finally
         {

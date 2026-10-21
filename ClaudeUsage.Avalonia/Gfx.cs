@@ -173,14 +173,14 @@ static class Gfx
         return ToIcon(bmp);
     }
 
-    public static WindowIcon MascotIcon(MascotFrame frame)
+    public static WindowIcon RefreshIcon(string style, RefreshFrame frame, SD.Color color)
     {
         using var bmp = new RenderTargetBitmap(new PixelSize(IconSize, IconSize), new Vector(96, 96));
         using (var dc = bmp.CreateDrawingContext())
         {
-            var unit = IconSize / MascotSprite.Columns; // 2
-            Pixels(dc, (IconSize - MascotSprite.Columns * unit) / 2.0, (IconSize - MascotSprite.Rows * unit) / 2.0, unit,
-                fill => MascotSprite.Paint(fill, frame));
+            var unit = IconSize / RefreshSprite.Columns; // 2
+            Pixels(dc, (IconSize - RefreshSprite.Columns * unit) / 2.0, (IconSize - RefreshSprite.Rows * unit) / 2.0, unit,
+                fill => RefreshSprite.Paint(fill, style, frame, color));
         }
         return ToIcon(bmp);
     }

@@ -10,7 +10,7 @@ sealed partial class UsageForm
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
     /// <summary>Lo que muestra «Ajustes»; lo manda TrayApp cada vez que cambia algo.</summary>
-    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, bool StartWithWindows, int Accounts);
+    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation, bool StartWithWindows, int Accounts);
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -18,7 +18,7 @@ sealed partial class UsageForm
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rectangle _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", false, 0);
+    SettingsState _settingsState = new(true, true, "", "", "", false, 0);
 
     static string ViewLabel(View view) => view switch
     {
@@ -217,6 +217,10 @@ sealed partial class UsageForm
         y = ChoiceRow(g, draw, "Estilo de sonido", "pack", s.SoundPack, y);
         y = LinksRow(g, draw, y, ("Ver un aviso de ejemplo", "sample"), ("Abrir carpeta de sonidos", "sounds"));
 
+        y = SettingsCaption(g, draw, "Apariencia", y + S(10));
+        y = ChoiceRow(g, draw, "Color", "palette", s.Palette, y, swatch: _t.Accent);
+        y = ChoiceRow(g, draw, "Animación al actualizar", "anim", s.Animation, y);
+
         y = SettingsCaption(g, draw, "Cuentas", y + S(10));
         y = LinkRow(g, draw, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);
 
@@ -253,7 +257,8 @@ sealed partial class UsageForm
         return y + height;
     }
 
-    int ChoiceRow(Graphics g, bool draw, string label, string key, string value, int y)
+    /// <summary>Una opción con lista; swatch pone un punto de ese color antes del valor (la paleta).</summary>
+    int ChoiceRow(Graphics g, bool draw, string label, string key, string value, int y, Color? swatch = null)
     {
         var height = S(32);
         var row = new Rectangle(Pad - S(8), y, Inner + S(16), height);
@@ -263,7 +268,13 @@ sealed partial class UsageForm
             if (_hoverKey == "set:" + key) Draw.Fill(g, _t.Hover, row, S(8));
             Write(g, label, _body, _t.Text, new Rectangle(Pad, y, Inner / 2, height), TextFormatFlags.VerticalCenter);
             var valueWidth = TextRenderer.MeasureText(g, value, _body, Size.Empty, Line).Width;
-            Write(g, value, _body, _t.Secondary, new Rectangle(Pad + Inner - S(18) - valueWidth, y, valueWidth, height), TextFormatFlags.VerticalCenter);
+            var valueX = Pad + Inner - S(18) - valueWidth;
+            Write(g, value, _body, _t.Secondary, new Rectangle(valueX, y, valueWidth, height), TextFormatFlags.VerticalCenter);
+            if (swatch is { } color)
+            {
+                var dot = S(12);
+                Draw.Fill(g, color, new RectangleF(valueX - S(8) - dot, y + (height - dot) / 2f, dot, dot), dot / 2f);
+            }
             Write(g, GlyphChevronDown, _glyphSmall, _t.Secondary, new Rectangle(Pad + Inner - S(14), y, S(14), height),
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }

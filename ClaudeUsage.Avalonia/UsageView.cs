@@ -44,7 +44,8 @@ sealed partial class UsageView : Control
     IReadOnlyDictionary<string, Profile> _profiles = new Dictionary<string, Profile>();
     IReadOnlyList<SessionInfo> _sessions = Array.Empty<SessionInfo>();
     ActivitySummary? _activity;
-    MascotFrame? _mascot;
+    RefreshFrame? _refresh;
+    string _refreshStyle = RefreshSprite.Styles[0].Id;
     LocalTotals? _local;
     DateTime? _updated;
     string? _selected;
@@ -108,7 +109,8 @@ sealed partial class UsageView : Control
         Relayout();
     }
 
-    public void SetMascot(MascotFrame? frame) { _mascot = frame; InvalidateVisual(); }
+    /// <summary>El cuadro de la animación al actualizar (null: no está corriendo) y su estilo.</summary>
+    public void SetRefreshFrame(RefreshFrame? frame, string style) { _refresh = frame; _refreshStyle = style; InvalidateVisual(); }
 
     public void SetActivity(ActivitySummary activity)
     {
@@ -641,11 +643,12 @@ sealed partial class UsageView : Control
         {
             const double unit = 2;
             var right = gear.X - 8;
-            var when = _mascot is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
-            var whenWidth = _mascot is not null ? MascotSprite.Columns * unit : Gfx.Measure(when, Gfx.Small).Width;
+            var when = _refresh is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
+            var whenWidth = _refresh is not null ? RefreshSprite.Columns * unit : Gfx.Measure(when, Gfx.Small).Width;
             Gfx.Write(dc, Format.Local(_local), Gfx.Small, _t.Tertiary, new Rect(Pad, y, right - Pad - whenWidth - 12, small));
-            if (_mascot is { } frame)
-                Gfx.Pixels(dc, right - whenWidth, y + (small - MascotSprite.Rows * unit) / 2, unit, fill => MascotSprite.Paint(fill, frame));
+            if (_refresh is { } frame)
+                Gfx.Pixels(dc, right - whenWidth, y + (small - RefreshSprite.Rows * unit) / 2, unit,
+                    fill => RefreshSprite.Paint(fill, _refreshStyle, frame, _t.Accent));
             else
                 Gfx.Write(dc, when, Gfx.Small, _t.Tertiary, new Rect(right - whenWidth, y, whenWidth + 1, small));
 
@@ -723,7 +726,7 @@ sealed partial class UsageView : Control
                 else ShowSettings();
                 break;
             case HitKind.CloseSettings: OpenView(_beforeSettings); break;
-            case HitKind.Setting when hit.Key == "set:pack": ShowPackMenu(); break;
+            case HitKind.Setting when hit.Key is "set:pack" or "set:palette" or "set:anim": ShowChoiceMenu(hit.Key[4..]); break;
             case HitKind.Setting: SettingRequested?.Invoke(hit.Key[4..]); break;
             case HitKind.FlowSession when hit.Session is { } flow: _flowSession = flow.SessionId; Relayout(); break;
             case HitKind.FlowBack: _flowSession = null; Relayout(); break;

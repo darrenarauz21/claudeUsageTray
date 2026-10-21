@@ -11,7 +11,6 @@ static class ToastSprite
     public const int Columns = 26, Rows = 18;
     const int Ox = 2, Oy = 6; // dónde va la mascota dentro del lienzo
 
-    static readonly Color Body = Color.FromArgb(0xD9, 0x77, 0x57);
     static readonly Color Ink = Color.FromArgb(0x2A, 0x1F, 0x1A);
     static readonly Color White = Color.FromArgb(0xFF, 0xFF, 0xFF);
     static readonly Color Green = Color.FromArgb(0x22, 0xA5, 0x59);
@@ -43,8 +42,8 @@ static class ToastSprite
         }
     }
 
-    /// <summary>Pinta el cuadro del momento t (ms desde que apareció el aviso), en casillas del lienzo.</summary>
-    public static void Paint(PixelFill fill, NoticeKind kind, long t)
+    /// <summary>Pinta el cuadro del momento t (ms desde que apareció el aviso), en casillas del lienzo, con el cuerpo del color dado (el acento de la paleta).</summary>
+    public static void Paint(PixelFill fill, NoticeKind kind, long t, Color body)
     {
         var p = new Painter(fill);
         // Al llegar: un salto; si falló, una sacudida.
@@ -53,7 +52,7 @@ static class ToastSprite
         else if (t < 450) dy = -(int)Math.Round(2 * Math.Sin(Math.PI * t / 450));
 
         var celebrating = kind is NoticeKind.Done or NoticeKind.UsageReset && t < 2800 && t / 350 % 2 == 0;
-        DrawBody(p, Ox + dx, Oy + dy, celebrating);
+        DrawBody(p, Ox + dx, Oy + dy, celebrating, body);
         DrawFace(p, Ox + dx, Oy + dy, EyesFor(kind, t), MouthFor(kind));
         DrawProps(p, kind, t, dy);
     }
@@ -82,21 +81,21 @@ static class ToastSprite
         _ => Mouth.Neutral,
     };
 
-    static void DrawBody(Painter p, int ox, int oy, bool armsUp)
+    static void DrawBody(Painter p, int ox, int oy, bool armsUp, Color body)
     {
-        p.Px(Body, ox + 3, oy + 2, 14, 7);
+        p.Px(body, ox + 3, oy + 2, 14, 7);
         if (armsUp)
         {
-            p.Px(Body, ox + 1, oy, 2, 2);
-            p.Px(Body, ox + 17, oy, 2, 2);
+            p.Px(body, ox + 1, oy, 2, 2);
+            p.Px(body, ox + 17, oy, 2, 2);
         }
         else
         {
-            p.Px(Body, ox + 1, oy + 5, 2, 2);
-            p.Px(Body, ox + 17, oy + 5, 2, 2);
+            p.Px(body, ox + 1, oy + 5, 2, 2);
+            p.Px(body, ox + 17, oy + 5, 2, 2);
         }
         foreach (var leg in new[] { 4, 6, 13, 15 })
-            p.Px(Body, ox + leg, oy + 9, 1, 2);
+            p.Px(body, ox + leg, oy + 9, 1, 2);
     }
 
     static void DrawFace(Painter p, int ox, int oy, Eyes eyes, Mouth mouth)
