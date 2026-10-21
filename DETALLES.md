@@ -36,8 +36,27 @@ caracteres del SHA-256 de la ruta para cada `CLAUDE_CONFIG_DIR`. La app las lee 
 
 Un botón por cuenta y, para la elegida, la sesión (5 h), la semana y la semana por modelo, con su
 barra y cuándo reinicia. Al pie, los tokens de hoy en este equipo. Al actualizar (a mano o cada
-5 minutos), la mascota ocupa el ícono y la hora del pie: abre los ojos, mira a los lados mientras
-llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
+5 minutos), la animación elegida en **Ajustes › Apariencia** ocupa el ícono y la hora del pie. La
+de siempre es la mascota: abre los ojos, mira a los lados mientras llega la respuesta y hace `> <`
+antes de mostrar el estado nuevo.
+
+## Apariencia
+
+En **Ajustes**, con el mismo patrón que el estilo de sonido: una lista, la elegida marcada y una
+muestra al elegir.
+
+- **Color:** paletas fijas, cada una con su tono para el modo claro y el oscuro (el modo sigue al
+  sistema): Claude (`#D97757`, la predeterminada), Océano, Bosque, Lavanda, Rosa y Grafito. Cambia
+  el acento: barras, interruptores, enlaces, el número del ícono y la mascota del ícono, del pie y
+  de los avisos. Fondos, textos y colores de estado (peligro, aviso, éxito) no cambian. Están en
+  `Theme.Palettes` (`Core/Theme.cs`).
+- **Animación al actualizar:** Mascota, Asterisco (el ✻ de Claude Code, que crece y se encoge),
+  Puntos (una ola que termina en sonrisa) o Ninguna (el ícono sigue con el porcentaje y el pie dice
+  «Actualizando…»). Todas usan la misma cuadrícula de 14 × 10 y los mismos tiempos de
+  `RefreshAnimator`; los dibujos están en `RefreshSprite` (`Core/Sprites.cs`). Al elegir una, la app
+  actualiza para mostrarla.
+
+Se guardan en `Palette` y `Animation` del `settings.json` de la app.
 
 ## Sesiones
 
@@ -65,7 +84,7 @@ La cabecera muestra siempre 3 vistas fijas (por defecto Uso, Sesiones y Activida
 tachuela abre la lista de todas: clic en el nombre la abre sin fijarla (el botón muestra su nombre
 si cabe); el pin de una vista libre la prepara y el pin de una fija hace el cambio en ese lugar,
 así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
-engranaje del pie abre **Ajustes** (notificaciones, sonido, cuentas, inicio con el sistema, hook,
+engranaje del pie abre **Ajustes** (notificaciones, sonido, apariencia, cuentas, inicio con el sistema, hook,
 diagnóstico); el menú del ícono queda en abrir, actualizar, nueva sesión, ajustes y salir.
 
 ## Flujos

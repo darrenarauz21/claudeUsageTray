@@ -14,6 +14,8 @@ de Claude Code.
 - **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
 - **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
   necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
+- **Apariencia:** el color de la app (el naranja de Claude u otra paleta) y la animación al
+  actualizar (la mascota, el asterisco, los puntos o ninguna), en **Ajustes**.
 
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.
@@ -79,7 +81,7 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 - **Clic en un aviso:** abre la sesión o la cuenta de la que habla.
 - **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
 - **Menú del ícono** (clic derecho; en Mac, clic): abrir, actualizar, nueva sesión, ajustes y salir.
-  Notificaciones, sonido, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
+  Notificaciones, sonido, color, animación, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
 
 ## Si algo no funciona
 
