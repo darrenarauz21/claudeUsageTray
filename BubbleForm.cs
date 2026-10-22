@@ -45,7 +45,7 @@ sealed class BubbleForm : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x08000000 | 0x80 | 0x8; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST
+            cp.ExStyle |= 0x08000000 | 0x80; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW (encima: TopMost, ver MascotWindow)
             return cp;
         }
     }
