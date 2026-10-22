@@ -9,8 +9,9 @@ sealed partial class UsageForm
 
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
-    /// <summary>Lo que muestra «Ajustes»; lo manda TrayApp cada vez que cambia algo.</summary>
-    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation, bool StartWithWindows, int Accounts);
+    /// <summary>Lo que muestra «Ajustes»; lo manda TrayApp cada vez que cambia algo. DesktopMascot es null si la mascota no es el chibi.</summary>
+    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation,
+        string Mascot, bool? DesktopMascot, bool StartWithWindows, int Accounts);
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -18,7 +19,7 @@ sealed partial class UsageForm
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rectangle _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", "", "", false, 0);
+    SettingsState _settingsState = new(true, true, "", "", "", "", null, false, 0);
 
     static string ViewLabel(View view) => view switch
     {
@@ -220,6 +221,8 @@ sealed partial class UsageForm
         y = SettingsCaption(g, draw, "Apariencia", y + S(10));
         y = ChoiceRow(g, draw, "Color", "palette", s.Palette, y, swatch: _t.Accent);
         y = ChoiceRow(g, draw, "Animación al actualizar", "anim", s.Animation, y);
+        y = ChoiceRow(g, draw, "Mascota", "mascot", s.Mascot, y);
+        if (s.DesktopMascot is { } desk) y = SwitchRow(g, draw, "Chibi en el escritorio", "desk", desk, y);
 
         y = SettingsCaption(g, draw, "Cuentas", y + S(10));
         y = LinkRow(g, draw, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);

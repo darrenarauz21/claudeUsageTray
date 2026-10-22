@@ -10,8 +10,9 @@ sealed partial class UsageView
 {
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
-    /// <summary>Lo que muestra «Ajustes»; lo manda TrayController cada vez que cambia algo.</summary>
-    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation, bool StartWithSystem, int Accounts);
+    /// <summary>Lo que muestra «Ajustes»; lo manda TrayController cada vez que cambia algo. DesktopMascot es null si la mascota no es el chibi.</summary>
+    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette, string Animation,
+        string Mascot, bool? DesktopMascot, bool StartWithSystem, int Accounts);
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -19,8 +20,8 @@ sealed partial class UsageView
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rect _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", "", "", false, 0);
-    string _soundPackId = "", _paletteId = "", _animationId = "";
+    SettingsState _settingsState = new(true, true, "", "", "", "", null, false, 0);
+    string _soundPackId = "", _paletteId = "", _animationId = "", _mascotId = "";
 
     static string ViewLabel(View view) => view switch
     {
@@ -42,12 +43,13 @@ sealed partial class UsageView
     }
 
     /// <summary>Los Id marcan la opción elegida en cada lista.</summary>
-    public void SetSettingsState(SettingsState state, string soundPackId, string paletteId, string animationId)
+    public void SetSettingsState(SettingsState state, string soundPackId, string paletteId, string animationId, string mascotId)
     {
         _settingsState = state;
         _soundPackId = soundPackId;
         _paletteId = paletteId;
         _animationId = animationId;
+        _mascotId = mascotId;
         if (_view == View.Settings) InvalidateVisual();
     }
 
@@ -198,6 +200,8 @@ sealed partial class UsageView
         y = SettingsCaption(dc, "Apariencia", y + 10);
         y = ChoiceRow(dc, "Color", "palette", s.Palette, y, swatch: _t.Accent);
         y = ChoiceRow(dc, "Animación al actualizar", "anim", s.Animation, y);
+        y = ChoiceRow(dc, "Mascota", "mascot", s.Mascot, y);
+        if (s.DesktopMascot is { } desk) y = SwitchRow(dc, "Chibi en el escritorio", "desk", desk, y);
 
         y = SettingsCaption(dc, "Cuentas", y + 10);
         y = LinkRow(dc, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);
@@ -288,16 +292,17 @@ sealed partial class UsageView
         return y + height;
     }
 
-    /// <summary>La lista de la opción de Ajustes con esa clave (pack, palette, anim); elegir manda «clave:id».</summary>
+    /// <summary>La lista de la opción de Ajustes con esa clave (pack, palette, anim, mascot); elegir manda «clave:id».</summary>
     void ShowChoiceMenu(string key)
     {
         IEnumerable<(string Id, string Label)> choices = key switch
         {
             "palette" => ClaudeUsageTray.Theme.Palettes.Select(p => (p.Id, p.Label)),
             "anim" => RefreshSprite.Styles,
+            "mascot" => Mascots.All,
             _ => Sounds.Packs,
         };
-        var selected = key switch { "palette" => _paletteId, "anim" => _animationId, _ => _soundPackId };
+        var selected = key switch { "palette" => _paletteId, "anim" => _animationId, "mascot" => _mascotId, _ => _soundPackId };
         var menu = new ContextMenu();
         foreach (var (id, label) in choices)
         {

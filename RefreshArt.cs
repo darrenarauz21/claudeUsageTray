@@ -3,8 +3,6 @@ namespace ClaudeUsageTray;
 /// <summary>Dibuja en Windows la animación al actualizar (RefreshSprite): en el pie de la ventana y como ícono.</summary>
 static class RefreshArt
 {
-    public const int Columns = RefreshSprite.Columns, Rows = RefreshSprite.Rows;
-
     public static void Draw(Graphics g, int x, int y, int unit, string style, RefreshFrame frame, Color color)
     {
         var brushes = new Dictionary<Color, SolidBrush>();
@@ -25,10 +23,12 @@ static class RefreshArt
     public static Icon Icon(string style, RefreshFrame frame, Color color)
     {
         var size = SystemInformation.SmallIconSize.Width;
-        var unit = Math.Max(1, size / Columns);
+        style = RefreshSprite.ForIcon(style, size); // en 16 o 24 px, la cabeza chica del chibi
+        int columns = RefreshSprite.Columns(style), rows = RefreshSprite.Rows(style);
+        var unit = Math.Max(1, size / columns);
         using var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp))
-            Draw(g, (size - Columns * unit) / 2, (size - Rows * unit) / 2, unit, style, frame, color);
+            Draw(g, (size - columns * unit) / 2, (size - rows * unit) / 2, unit, style, frame, color);
         var handle = bmp.GetHicon();
         try { return (Icon)System.Drawing.Icon.FromHandle(handle).Clone(); }
         finally { DestroyIcon(handle); }

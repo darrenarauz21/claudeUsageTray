@@ -178,8 +178,10 @@ static class Gfx
         using var bmp = new RenderTargetBitmap(new PixelSize(IconSize, IconSize), new Vector(96, 96));
         using (var dc = bmp.CreateDrawingContext())
         {
-            var unit = IconSize / RefreshSprite.Columns; // 2
-            Pixels(dc, (IconSize - RefreshSprite.Columns * unit) / 2.0, (IconSize - RefreshSprite.Rows * unit) / 2.0, unit,
+            style = RefreshSprite.ForIcon(style, IconSize);
+            int columns = RefreshSprite.Columns(style), rows = RefreshSprite.Rows(style);
+            var unit = IconSize / columns; // 2
+            Pixels(dc, (IconSize - columns * unit) / 2.0, (IconSize - rows * unit) / 2.0, unit,
                 fill => RefreshSprite.Paint(fill, style, frame, color));
         }
         return ToIcon(bmp);

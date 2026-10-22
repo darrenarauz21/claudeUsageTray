@@ -204,9 +204,22 @@ sealed class ToastView(Notice notice, Theme theme) : Control
         var t = theme;
         dc.FillRectangle(Gfx.B(t.Raised), new Rect(Bounds.Size));
         var art = new Rect(12, (Bounds.Height - 64) / 2, 78, 64);
-        const double unit = 3;
-        Gfx.Pixels(dc, art.X + (art.Width - ToastSprite.Columns * unit) / 2, art.Y + (art.Height - ToastSprite.Rows * unit) / 2, unit,
-            fill => ToastSprite.Paint(fill, notice.Kind, Environment.TickCount64 - _born, t.Accent));
+        var born = Environment.TickCount64 - _born;
+        if (Mascots.IsChibi)
+        {
+            // Asomado desde abajo, en todo el alto del aviso: de la cabeza al ruedo del hoodie.
+            var column = new Rect(8, 0, 86, Bounds.Height);
+            var chibiUnit = Math.Max(1, Math.Floor(column.Height / ChibiSprite.ToastRows));
+            using (dc.PushClip(column))
+                Gfx.Pixels(dc, column.X + (column.Width - ChibiSprite.Columns * chibiUnit) / 2, column.Bottom - ChibiSprite.HemRow * chibiUnit, chibiUnit,
+                    fill => ChibiSprite.Paint(fill, ChibiSprite.ForNotice(notice.Kind), born));
+        }
+        else
+        {
+            const double unit = 3;
+            Gfx.Pixels(dc, art.X + (art.Width - ToastSprite.Columns * unit) / 2, art.Y + (art.Height - ToastSprite.Rows * unit) / 2, unit,
+                fill => ToastSprite.Paint(fill, notice.Kind, born, t.Accent));
+        }
 
         var x = art.Right + 12;
         var width = Bounds.Width - x - 34;

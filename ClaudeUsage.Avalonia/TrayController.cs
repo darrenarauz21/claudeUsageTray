@@ -29,7 +29,9 @@ sealed class TrayController
     readonly NoticeDetector _detector = new();
     readonly ToastStack _toasts = new();
     readonly Sounds _sounds = new();
+    readonly ChibiDirector _director = new();
 
+    MascotWindow? _mascotWindow;
     Theme _theme = Theme.Light;
     LocalTotals? _local;
     DateTime? _updated;
@@ -50,7 +52,8 @@ sealed class TrayController
         Sounds.EnsureDefaults();
 
         Theme.SelectedPalette = _settings.Palette;
-        _refresh.Style = _settings.Animation;
+        Mascots.Selected = _settings.Mascot;
+        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, _settings.Mascot);
         ApplyTheme();
         app.ActualThemeVariantChanged += (_, _) => ApplyTheme();
 
@@ -132,6 +135,7 @@ sealed class TrayController
             Render();
             if (showOnStart) ShowForm();
             if (demo) ShowSamples();
+            UpdateMascotWindow();
             if (autoSetup && NeedsSetup()) await ShowSetupAsync();
             await RefreshAsync();
         });
@@ -187,13 +191,14 @@ sealed class TrayController
 
     async Task ScanSessionsAsync()
     {
-        if (_scanning || (!_popup.IsVisible && !_settings.Notifications)) return;
+        if (_scanning || (!_popup.IsVisible && !_settings.Notifications && _mascotWindow is null)) return;
         _scanning = true;
         try
         {
             var accounts = _settings.Accounts.ToList();
             var sessions = await Task.Run(() => _monitor.Scan(accounts));
             View.SetSessions(sessions);
+            _director.SetSessions(sessions);
             _lastSessions = sessions;
             if (_settings.Notifications)
             {
@@ -207,6 +212,7 @@ sealed class TrayController
     void ShowNotice(Notice notice)
     {
         _toasts.Show(notice, _theme);
+        _director.Notice(notice.Kind);
         if (_settings.Sound) _sounds.Play(notice.Kind, _settings.SoundPack);
     }
 
@@ -216,8 +222,9 @@ sealed class TrayController
         var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
         View.SetSettingsState(new UsageView.SettingsState(
                 _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
-                RefreshSprite.Label(_settings.Animation), StartupRegistration.IsEnabled, _settings.Accounts.Count),
-            _settings.SoundPack, _settings.Palette, _settings.Animation);
+                RefreshSprite.Label(_settings.Animation), Mascots.Label(_settings.Mascot),
+                Mascots.IsChibi ? _settings.DesktopMascot : null, StartupRegistration.IsEnabled, _settings.Accounts.Count),
+            _settings.SoundPack, _settings.Palette, _settings.Animation, _settings.Mascot);
     }
 
     async Task OnSettingAsync(string action)
@@ -225,6 +232,7 @@ sealed class TrayController
         if (action.StartsWith("pack:", StringComparison.Ordinal)) SetSoundPack(action[5..]);
         else if (action.StartsWith("palette:", StringComparison.Ordinal)) SetPalette(action[8..]);
         else if (action.StartsWith("anim:", StringComparison.Ordinal)) SetAnimation(action[5..]);
+        else if (action.StartsWith("mascot:", StringComparison.Ordinal)) SetMascot(action[7..]);
         else
         {
             switch (action)
@@ -232,6 +240,7 @@ sealed class TrayController
                 case "notify": ToggleNotifications(); break;
                 case "sound": ToggleSound(); break;
                 case "startup": ToggleStartup(); break;
+                case "desk": ToggleDesktopMascot(); break;
                 case "sample": ShowNextSample(); break;
                 case "sounds": Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); break;
                 case "add": await AddAccountAsync(); break;
@@ -306,10 +315,53 @@ sealed class TrayController
     {
         _settings.Animation = style;
         SettingsStore.Save(_settings);
-        _refresh.Style = style;
+        _refresh.Style = RefreshSprite.Resolve(style, _settings.Mascot);
         _refreshIcons.Clear();
         ShowRefreshFrame();
         _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
+    }
+
+    void SetMascot(string mascot)
+    {
+        _settings.Mascot = mascot;
+        SettingsStore.Save(_settings);
+        Mascots.Selected = mascot; // los avisos la leen al dibujarse
+        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, mascot);
+        _refreshIcons.Clear();
+        ShowRefreshFrame();
+        UpdateMascotWindow();
+        _ = RefreshAsync(); // muestra de la mascota en la animación al actualizar
+    }
+
+    void ToggleDesktopMascot()
+    {
+        _settings.DesktopMascot = !_settings.DesktopMascot;
+        SettingsStore.Save(_settings);
+        UpdateMascotWindow();
+    }
+
+    /// <summary>El chibi del escritorio está si se eligió el chibi y no se ocultó.</summary>
+    void UpdateMascotWindow()
+    {
+        var wanted = Mascots.IsChibi && _settings.DesktopMascot;
+        if (wanted == _mascotWindow is not null) return;
+        if (!wanted)
+        {
+            _mascotWindow!.Close();
+            _mascotWindow = null;
+            return;
+        }
+        PixelPoint? saved = _settings.DesktopMascotX is { } x && _settings.DesktopMascotY is { } y ? new PixelPoint(x, y) : null;
+        _mascotWindow = new MascotWindow(_director, saved);
+        _mascotWindow.OpenRequested += ShowForm;
+        _mascotWindow.HideRequested += () => { ToggleDesktopMascot(); PushSettings(); };
+        _mascotWindow.Moved += at =>
+        {
+            (_settings.DesktopMascotX, _settings.DesktopMascotY) = (at.X, at.Y);
+            SettingsStore.Save(_settings);
+        };
+        _mascotWindow.Show();
+        _ = ScanSessionsAsync(); // para que empiece haciendo lo que corresponde
     }
 
     /// <summary>Toma el tema del momento (modo del sistema y paleta elegida): ventana, ícono y animación.</summary>
@@ -570,6 +622,7 @@ sealed class TrayController
         _timer.Stop();
         _sessionTimer.Stop();
         _toasts.CloseAll();
+        _mascotWindow?.Close();
         _sounds.Dispose();
         _refresh.Dispose();
         _tray.IsVisible = false;

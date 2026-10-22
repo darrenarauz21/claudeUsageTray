@@ -52,17 +52,40 @@ static class MascotSprite
 /// <summary>
 /// La animación al actualizar, con el estilo elegido en Ajustes (como el estilo de sonido). Todos se
 /// dibujan en la cuadrícula de la mascota (14 × 10) con el acento de la paleta. «Ninguna» no anima:
-/// el ícono sigue con el porcentaje y el pie dice «Actualizando…».
+/// el ícono sigue con el porcentaje y el pie dice «Actualizando…». Con la mascota chibi, el estilo
+/// «Mascota» se dibuja con la cabeza del chibi, en su propia cuadrícula de 16 × 16.
 /// </summary>
 static class RefreshSprite
 {
-    public const int Columns = MascotSprite.Columns, Rows = MascotSprite.Rows;
     public const string None = "ninguna";
+    /// <summary>Estilos internos: «Mascota» con la mascota chibi, con su cabeza grande o chica. No aparecen en Ajustes.</summary>
+    const string Chibi = "chibi", SmallChibi = "chibi-chico";
 
     public static readonly (string Id, string Label)[] Styles =
         [("mascota", "Mascota"), ("asterisco", "Asterisco"), ("puntos", "Puntos"), (None, "Ninguna")];
 
     public static string Label(string id) => Styles.FirstOrDefault(s => s.Id == id).Label ?? Styles[0].Label;
+
+    /// <summary>El estilo que se dibuja: el elegido en Ajustes, con la mascota elegida si es «Mascota».</summary>
+    public static string Resolve(string animation, string mascot) =>
+        animation == "mascota" && mascot == Mascots.Chibi ? Chibi : animation;
+
+    /// <summary>Tamaño de la cuadrícula de cada estilo, en casillas.</summary>
+    public static int Columns(string style) => style switch
+    {
+        Chibi => ChibiSprite.HeadSize,
+        SmallChibi => ChibiSprite.SmallHeadSize,
+        _ => MascotSprite.Columns,
+    };
+    public static int Rows(string style) => style switch
+    {
+        Chibi => ChibiSprite.HeadSize,
+        SmallChibi => ChibiSprite.SmallHeadSize,
+        _ => MascotSprite.Rows,
+    };
+
+    /// <summary>Para un ícono de size pixeles: si la cabeza grande no entra, la chica, que se ve nítida.</summary>
+    public static string ForIcon(string style, int size) => style == Chibi && size < ChibiSprite.HeadSize ? SmallChibi : style;
 
     /// <summary>Pasos de cada estilo en una vuelta de la espera (la mascota mira por fase, no por paso).</summary>
     public static int Steps(string style) => style switch { "asterisco" => 6, "puntos" => 4, _ => 1 };
@@ -103,6 +126,9 @@ static class RefreshSprite
                     };
                     if (y >= 0) fill(color, columns[i], y, 2, 2);
                 }
+                break;
+            case Chibi or SmallChibi:
+                ChibiSprite.PaintHead(fill, frame.Phase, small: style == SmallChibi); // con sus colores, no con el acento
                 break;
             default:
                 MascotSprite.Paint(fill, frame.Phase, color);

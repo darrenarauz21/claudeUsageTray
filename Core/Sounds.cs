@@ -6,7 +6,7 @@ namespace ClaudeUsageTray;
 
 /// <summary>
 /// Sonidos de los avisos, en %APPDATA%\ClaudeUsageTray\sonidos: un estilo por carpeta («clasico»,
-/// «risitas»), generados por la app, y «propios», donde un archivo con el mismo nombre (.wav o .mp3)
+/// «risitas», «chibi»), generados por la app, y «propios», donde un archivo con el mismo nombre (.wav o .mp3)
 /// manda sobre el estilo elegido. Un sonido borrado de un estilo vuelve a generarse.
 /// </summary>
 sealed class Sounds : IDisposable
@@ -15,7 +15,7 @@ sealed class Sounds : IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClaudeUsageTray", "sonidos");
     public static string CustomFolder => Path.Combine(Folder, "propios");
 
-    public static readonly (string Id, string Label)[] Packs = [("clasico", "Clásico"), ("risitas", "Risitas")];
+    public static readonly (string Id, string Label)[] Packs = [("clasico", "Clásico"), ("risitas", "Risitas"), ("chibi", "Chibi")];
     static readonly string[] Names = ["terminado", "pregunta", "permiso", "fallo", "uso", "aviso"];
 
     enum Voice { Happy, Question, Knock, Sad, Neutral, Short }
@@ -37,7 +37,12 @@ sealed class Sounds : IDisposable
     static byte[] Generate(string pack, string name)
     {
         var index = Array.IndexOf(Names, name);
-        return pack == "risitas" ? SynthesizeGiggle(index) : Synthesize((Voice)index);
+        return pack switch
+        {
+            "risitas" => SynthesizeGiggle(index),
+            "chibi" => name == "fallo" ? SynthesizeUwa() : SynthesizeOi(index),
+            _ => Synthesize((Voice)index),
+        };
     }
 
     /// <summary>Crea las carpetas y repone los sonidos de cada estilo que falten.</summary>
@@ -66,7 +71,7 @@ sealed class Sounds : IDisposable
                 + "terminado: terminó o límite reiniciado\r\npregunta: le está preguntando\r\n"
                 + "permiso: necesita su permiso\r\nfallo: falló, se cerró o sesión vencida\r\n"
                 + "uso: uso al 80 o 95 %\r\naviso: reintentando\r\n\r\n"
-                + "clasico y risitas: los estilos de la app; se elige en el menú del ícono (Estilo de sonido).\r\n"
+                + "clasico, risitas y chibi: los estilos de la app; se elige en Ajustes (Estilo de sonido).\r\n"
                 + "propios: ponga aquí un archivo con el mismo nombre (.wav o .mp3) y sonará ese en lugar del estilo.\r\n"
                 + "Si borra un sonido de un estilo, la app lo vuelve a crear.\r\n";
             if (!File.Exists(readme) || File.ReadAllText(readme) != text) File.WriteAllText(readme, text, Encoding.UTF8);
@@ -268,7 +273,7 @@ sealed class Sounds : IDisposable
     // ── Síntesis de las risitas: «jejeje» / «jijiji» ────────────────────────────────────────
 
     /// <summary>Versión de cada estilo: si cambia, la app vuelve a escribir sus archivos.</summary>
-    static readonly Dictionary<string, string> PackVersions = new() { ["clasico"] = "1", ["risitas"] = "3" };
+    static readonly Dictionary<string, string> PackVersions = new() { ["clasico"] = "1", ["risitas"] = "3", ["chibi"] = "7" };
 
     /// <summary>
     /// Una risa: sílabas «je» o «ji» (Vowel 0 = e, 1 = i), una cada Period segundos, con el tono
@@ -373,6 +378,127 @@ sealed class Sounds : IDisposable
             output[i] = (float)(amplitude * (voiced + 0.9 * consonant));
         }
         return output;
+    }
+
+    // ── Síntesis del chibi: «¡oi!» (el «¡ey!» japonés), voz femenina de anime ─────────────────
+
+    /// <summary>
+    /// Un «oi» con la melodía del «uwaaa»: la altura sube de Start a Peak en el primer cuarto y baja
+    /// despacio hasta End; OShare es la parte que dura la «o», larga y tan abierta que suena casi a
+    /// «a» (como la del «uwaaa»), antes de cerrar en «i».
+    /// Gap es el silencio antes.
+    /// </summary>
+    sealed record Oi(double Duration, double Start, double Peak, double End, double OShare = 0.6, double Gap = 0);
+
+    /// <summary>terminado, pregunta, permiso, uso y aviso (mismo orden que Names); fallo es SynthesizeUwa.</summary>
+    static byte[] SynthesizeOi(int index)
+    {
+        var calls = index switch
+        {
+            0 => new[] { new Oi(0.55, 300, 370, 260) },                                                     // ¡oooi!, contenta
+            1 => new[] { new Oi(0.55, 290, 300, 420, OShare: 0.55) },                                       // ¿oooi?, sube al final
+            2 => new[] { new Oi(0.30, 300, 360, 270, 0.55), new Oi(0.40, 310, 370, 250, Gap: 0.06) },       // oi, oooi
+            4 => new[] { new Oi(0.75, 300, 360, 230, OShare: 0.7) },                                        // ¡ooooi!, llamando
+            _ => new[] { new Oi(0.30, 320, 360, 280, 0.55) },                                               // oi, cortito
+        };
+
+        var random = new Random(23 + index); // siempre el mismo sonido para el mismo caso
+        var samples = new List<float>();
+        foreach (var call in calls)
+        {
+            samples.AddRange(new float[(int)(call.Gap * Rate)]);
+            samples.AddRange(RenderOi(call, random));
+        }
+        samples.AddRange(new float[(int)(0.04 * Rate)]);
+
+        var peak = samples.Max(Math.Abs);
+        var gain = peak > 0 ? 0.6f / peak : 1f;
+        return Wav(samples.Select(v => v * gain).ToArray());
+    }
+
+    /// <summary>
+    /// La misma voz que el «uwaaa» (SynthesizeUwa): femenina adulta, limpia y sin vibrato, como una voz
+    /// de lectura en japonés. Tres formantes pasan de la «o» casi «a» a la «i» (cerrada y brillante).
+    /// </summary>
+    static float[] RenderOi(Oi call, Random random)
+    {
+        var n = (int)(call.Duration * Rate);
+        var output = new float[n];
+        var phase = 0.0;
+        var (r1, r2, r3) = (new Resonator(), new Resonator(), new Resonator());
+        for (var i = 0; i < n; i++)
+        {
+            var t = i / (double)n;
+            var pitch = t < 0.25
+                ? call.Start + (call.Peak - call.Start) * Smooth(t / 0.25)
+                : call.Peak + (call.End - call.Peak) * Smooth((t - 0.25) / 0.75);
+            phase += 2 * Math.PI * pitch / Rate;
+
+            var source = 0.0;
+            for (var k = 1; k * pitch < 9000 && k <= 30; k++) source += Math.Sin(k * phase) / k;
+            source += 0.03 * (random.NextDouble() * 2 - 1);
+
+            // «o» casi «a» → «i», con formantes de voz femenina adulta.
+            var vowel = Smooth(Math.Clamp((t - call.OShare) / 0.2, 0, 1));
+            var formant1 = 850 - 520 * vowel;
+            var formant2 = 1300 + 1300 * vowel;
+            var formant3 = 2800 + 400 * vowel;
+            var voiced = r1.Next(source, formant1, 80) + 0.5 * r2.Next(source, formant2, 100) + 0.25 * r3.Next(source, formant3, 150);
+
+            // Ataque de 15 ms, como el «uwaaa», y caída en el último 20 %.
+            var attack = Math.Min(1, i / (0.015 * Rate));
+            var release = t > 0.8 ? Math.Cos((t - 0.8) / 0.2 * Math.PI / 2) : 1;
+            output[i] = (float)(voiced * attack * release);
+        }
+        return output;
+
+        static double Smooth(double x) => x * x * (3 - 2 * x);
+    }
+
+    /// <summary>
+    /// «¡Uwaaa!» (うわあああ), para lo que falló, con la voz del «oi»: femenina adulta, limpia y sin
+    /// vibrato, como una voz de lectura en japonés. La «u» pasa por la «w» (más cerrada y un poco
+    /// más baja de volumen) a una «a» larga; la altura sube en el «wa» y cae despacio en el «aaa».
+    /// </summary>
+    static byte[] SynthesizeUwa()
+    {
+        const double Duration = 0.9, Peak = 0.22;
+        var n = (int)(Duration * Rate);
+        var samples = new float[n + (int)(0.04 * Rate)];
+        var phase = 0.0;
+        var random = new Random(29);
+        var (r1, r2, r3) = (new Resonator(), new Resonator(), new Resonator());
+        for (var i = 0; i < n; i++)
+        {
+            var time = i / (double)Rate;
+            var pitch = time < Peak
+                ? 300 + 60 * Smooth(time / Peak)
+                : 360 - 130 * Smooth((time - Peak) / (Duration - Peak));
+            phase += 2 * Math.PI * pitch / Rate;
+
+            var source = 0.0;
+            for (var k = 1; k * pitch < 9000 && k <= 30; k++) source += Math.Sin(k * phase) / k;
+            source += 0.03 * (random.NextDouble() * 2 - 1);
+
+            // De «u» a «a»; a mitad de camino, la «w» cierra los labios: bajan los formantes y el volumen.
+            var toA = Smooth(Math.Clamp((time - 0.10) / 0.12, 0, 1));
+            var w = Math.Sin(Math.PI * toA);
+            var formant1 = 370 + 580 * toA - 150 * w;
+            var formant2 = 1500 + 50 * toA - 700 * w;
+            var formant3 = 2800 + 200 * toA;
+            var voiced = r1.Next(source, formant1, 80) + 0.5 * r2.Next(source, formant2, 100) + 0.25 * r3.Next(source, formant3, 150);
+
+            var attack = Math.Min(1, time / 0.015);
+            var t = time / Duration;
+            var release = t > 0.75 ? Math.Cos((t - 0.75) / 0.25 * Math.PI / 2) : 1;
+            samples[i] = (float)(voiced * (1 - 0.45 * w) * attack * release);
+        }
+
+        var peak = samples.Max(Math.Abs);
+        var gain = peak > 0 ? 0.6f / peak : 1f;
+        return Wav(samples.Select(v => v * gain).ToArray());
+
+        static double Smooth(double x) => x * x * (3 - 2 * x);
     }
 
     static byte[] Wav(float[] samples)

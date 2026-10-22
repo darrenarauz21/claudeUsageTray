@@ -835,12 +835,14 @@ sealed partial class UsageForm : Form
         {
             var right = gear.X - S(8);
             // Mientras se actualiza, la animación (la mascota u otro estilo) ocupa el lugar de la hora.
-            var unit = Math.Max(1, (int)Math.Round(smallHeight / 8f));
+            // Alto de 1,25 líneas sea cual sea la cuadrícula del estilo (la de la cabeza del chibi es más fina).
+            var rows = RefreshSprite.Rows(_refreshStyle);
+            var unit = Math.Max(1, (int)Math.Round(smallHeight * 1.25f / rows));
             var when = _refresh is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
-            var whenWidth = _refresh is not null ? RefreshArt.Columns * unit : TextRenderer.MeasureText(g, when, _small, Size.Empty, Line).Width;
+            var whenWidth = _refresh is not null ? RefreshSprite.Columns(_refreshStyle) * unit : TextRenderer.MeasureText(g, when, _small, Size.Empty, Line).Width;
             Write(g, Format.Local(_local), _small, _t.Tertiary, new Rectangle(Pad, y, right - Pad - whenWidth - S(12), smallHeight), TextFormatFlags.EndEllipsis);
             if (_refresh is { } frame)
-                RefreshArt.Draw(g, right - whenWidth, y + (smallHeight - RefreshArt.Rows * unit) / 2, unit, _refreshStyle, frame, _t.Accent);
+                RefreshArt.Draw(g, right - whenWidth, y + (smallHeight - rows * unit) / 2, unit, _refreshStyle, frame, _t.Accent);
             else
                 Write(g, when, _small, _t.Tertiary, new Rectangle(right - whenWidth, y, whenWidth, smallHeight));
 

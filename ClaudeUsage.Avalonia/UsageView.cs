@@ -641,13 +641,15 @@ sealed partial class UsageView : Control
         AddHit("gear", gear, HitKind.Gear);
         if (dc is not null)
         {
-            const double unit = 2;
+            // Unos 20 de alto sea cual sea la cuadrícula del estilo (la de la cabeza del chibi es más fina).
+            var rows = RefreshSprite.Rows(_refreshStyle);
+            var unit = Math.Max(1, Math.Round(20.0 / rows));
             var right = gear.X - 8;
             var when = _refresh is not null ? "" : _busy ? "Actualizando…" : _updated is { } u ? $"{u:t}" : "";
-            var whenWidth = _refresh is not null ? RefreshSprite.Columns * unit : Gfx.Measure(when, Gfx.Small).Width;
+            var whenWidth = _refresh is not null ? RefreshSprite.Columns(_refreshStyle) * unit : Gfx.Measure(when, Gfx.Small).Width;
             Gfx.Write(dc, Format.Local(_local), Gfx.Small, _t.Tertiary, new Rect(Pad, y, right - Pad - whenWidth - 12, small));
             if (_refresh is { } frame)
-                Gfx.Pixels(dc, right - whenWidth, y + (small - RefreshSprite.Rows * unit) / 2, unit,
+                Gfx.Pixels(dc, right - whenWidth, y + (small - rows * unit) / 2, unit,
                     fill => RefreshSprite.Paint(fill, _refreshStyle, frame, _t.Accent));
             else
                 Gfx.Write(dc, when, Gfx.Small, _t.Tertiary, new Rect(right - whenWidth, y, whenWidth + 1, small));
@@ -726,7 +728,7 @@ sealed partial class UsageView : Control
                 else ShowSettings();
                 break;
             case HitKind.CloseSettings: OpenView(_beforeSettings); break;
-            case HitKind.Setting when hit.Key is "set:pack" or "set:palette" or "set:anim": ShowChoiceMenu(hit.Key[4..]); break;
+            case HitKind.Setting when hit.Key is "set:pack" or "set:palette" or "set:anim" or "set:mascot": ShowChoiceMenu(hit.Key[4..]); break;
             case HitKind.Setting: SettingRequested?.Invoke(hit.Key[4..]); break;
             case HitKind.FlowSession when hit.Session is { } flow: _flowSession = flow.SessionId; Relayout(); break;
             case HitKind.FlowBack: _flowSession = null; Relayout(); break;

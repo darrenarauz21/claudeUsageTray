@@ -47,6 +47,13 @@ sealed class AppSettings
     public string Palette { get; set; } = "claude";
     /// <summary>Animación al actualizar (RefreshSprite.Styles).</summary>
     public string Animation { get; set; } = "mascota";
+    /// <summary>Mascota de los avisos y de la animación «Mascota» (Mascots.All).</summary>
+    public string Mascot { get; set; } = Mascots.Classic;
+    /// <summary>El chibi en su propia ventana sobre el escritorio (solo con la mascota chibi).</summary>
+    public bool DesktopMascot { get; set; } = true;
+    /// <summary>Dónde quedó la ventana del chibi al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
+    public int? DesktopMascotX { get; set; }
+    public int? DesktopMascotY { get; set; }
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
     /// <summary>Lo último elegido en «Nueva sesión».</summary>
