@@ -61,7 +61,9 @@ sealed class MascotWindow : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x08000000 | 0x80 | 0x8; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST
+            // Sin WS_EX_TOPMOST al crearla (lo pone TopMost después): con él, Windows no convierte la
+            // posición al DPI de una segunda pantalla con otra escala y la ventana nace fuera de ella.
+            cp.ExStyle |= 0x08000000 | 0x80; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
             return cp;
         }
     }

@@ -53,8 +53,8 @@ sealed class ToastForm : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x08000000 | 0x80 | 0x8; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST
-            cp.ClassStyle |= 0x20000;              // CS_DROPSHADOW
+            cp.ExStyle |= 0x08000000 | 0x80; // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW (encima: TopMost, ver MascotWindow)
+            cp.ClassStyle |= 0x20000;        // CS_DROPSHADOW
             return cp;
         }
     }
