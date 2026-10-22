@@ -3,8 +3,11 @@ using Microsoft.Win32;
 
 namespace ClaudeUsageTray;
 
-/// <summary>Colores de Claude Desktop: marfil y gris cálido, con el acento arcilla.</summary>
-sealed class Theme
+/// <summary>
+/// Colores de Claude Desktop: marfil y gris cálido, con el acento de la paleta elegida en Ajustes
+/// (la arcilla de Claude por defecto). El acento pinta barras, interruptores, enlaces y la mascota.
+/// </summary>
+sealed record Theme
 {
     public required bool Dark { get; init; }
     public required Color Background { get; init; }
@@ -36,6 +39,20 @@ sealed class Theme
         Accent = Hex(0xD97757), Danger = Hex(0xE0695C), Success = Hex(0x8FA46C), Warn = Hex(0xE0A84B),
     };
 
+    /// <summary>Paletas del acento, cada una con su tono para el modo claro y para el oscuro.</summary>
+    public static readonly (string Id, string Label, Color Light, Color Dark)[] Palettes =
+    [
+        ("claude", "Claude", Hex(0xD97757), Hex(0xD97757)),
+        ("oceano", "Océano", Hex(0x2F7FC1), Hex(0x5BA3E0)),
+        ("bosque", "Bosque", Hex(0x3F8A57), Hex(0x6DB283)),
+        ("lavanda", "Lavanda", Hex(0x7E62C4), Hex(0xA48BE0)),
+        ("rosa", "Rosa", Hex(0xC4507F), Hex(0xE07CA4)),
+        ("grafito", "Grafito", Hex(0x6E6C66), Hex(0xA8A69E)),
+    ];
+
+    /// <summary>La paleta elegida (Id de Palettes); si no existe, la de Claude.</summary>
+    public static string SelectedPalette { get; set; } = "claude";
+
     /// <summary>Sigue el modo de las aplicaciones de Windows.</summary>
     public static Theme Current
     {
@@ -43,15 +60,22 @@ sealed class Theme
         {
             try
             {
-                if (!OperatingSystem.IsWindows()) return Light;
+                if (!OperatingSystem.IsWindows()) return ForDark(false);
                 using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                return key?.GetValue("AppsUseLightTheme") is int light && light == 0 ? DarkTheme : Light;
+                return ForDark(key?.GetValue("AppsUseLightTheme") is int light && light == 0);
             }
-            catch (Exception) { return Light; }
+            catch (Exception) { return ForDark(false); }
         }
     }
 
-    public static Theme ForDark(bool dark) => dark ? DarkTheme : Light;
+    public static Theme ForDark(bool dark)
+    {
+        var palette = Palettes.FirstOrDefault(p => p.Id == SelectedPalette);
+        if (palette.Id is null) palette = Palettes[0];
+        return (dark ? DarkTheme : Light) with { Accent = dark ? palette.Dark : palette.Light };
+    }
+
+    public static string PaletteLabel(string id) => Palettes.FirstOrDefault(p => p.Id == id).Label ?? Palettes[0].Label;
 
     public Color For(double percent, string? severity = null) =>
         severity is "critical" or "exceeded" or "blocked" || percent >= 90 ? Danger : Accent;

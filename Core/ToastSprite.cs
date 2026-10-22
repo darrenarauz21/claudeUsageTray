@@ -11,7 +11,6 @@ static class ToastSprite
     public const int Columns = 26, Rows = 18;
     const int Ox = 2, Oy = 6; // dónde va la mascota dentro del lienzo
 
-    static readonly Color Body = Color.FromArgb(0xD9, 0x77, 0x57);
     static readonly Color Ink = Color.FromArgb(0x2A, 0x1F, 0x1A);
     static readonly Color White = Color.FromArgb(0xFF, 0xFF, 0xFF);
     static readonly Color Green = Color.FromArgb(0x22, 0xA5, 0x59);
@@ -43,8 +42,8 @@ static class ToastSprite
         }
     }
 
-    /// <summary>Pinta el cuadro del momento t (ms desde que apareció el aviso), en casillas del lienzo.</summary>
-    public static void Paint(PixelFill fill, NoticeKind kind, long t)
+    /// <summary>Pinta el cuadro del momento t (ms desde que apareció el aviso), en casillas del lienzo, con el cuerpo del color dado (el acento de la paleta).</summary>
+    public static void Paint(PixelFill fill, NoticeKind kind, long t, Color body)
     {
         var p = new Painter(fill);
         // Al llegar: un salto; si falló, una sacudida.
@@ -53,9 +52,69 @@ static class ToastSprite
         else if (t < 450) dy = -(int)Math.Round(2 * Math.Sin(Math.PI * t / 450));
 
         var celebrating = kind is NoticeKind.Done or NoticeKind.UsageReset && t < 2800 && t / 350 % 2 == 0;
-        DrawBody(p, Ox + dx, Oy + dy, celebrating);
+        DrawBody(p, Ox + dx, Oy + dy, celebrating, body);
         DrawFace(p, Ox + dx, Oy + dy, EyesFor(kind, t), MouthFor(kind));
         DrawProps(p, kind, t, dy);
+    }
+
+    /// <summary>
+    /// La mascota clásica en el escritorio, con los movimientos del chibi (ChibiDirector): los que
+    /// tienen aviso se toman de ahí (festejar, pensar, marearse, dormir, el límite renovado) y los demás
+    /// se arman con las mismas piezas. t es el tiempo desde que empezó el movimiento.
+    /// </summary>
+    public static void PaintMove(PixelFill fill, ChibiMove move, long t, Color body)
+    {
+        var kind = move switch
+        {
+            ChibiMove.Cheer => NoticeKind.Done,
+            ChibiMove.Maracas => NoticeKind.UsageReset,
+            ChibiMove.Think => NoticeKind.Question,
+            ChibiMove.Dizzy => NoticeKind.Failed,
+            ChibiMove.Sleep => NoticeKind.Closed,
+            _ => (NoticeKind?)null,
+        };
+        if (kind is { } k) { Paint(fill, k, t, body); return; }
+
+        var p = new Painter(fill);
+        var blink = t % 2800 > 2660;
+        switch (move)
+        {
+            case ChibiMove.Dance:
+            {
+                // Saltitos al compás, brazos arriba y abajo y un destello que cambia de lado.
+                var beat = (int)(t / 200 % 4);
+                var dy = beat is 1 or 3 ? -1 : 0;
+                DrawBody(p, Ox, Oy + dy, armsUp: beat < 2, body);
+                DrawFace(p, Ox, Oy + dy, Eyes.Happy, Mouth.Smile);
+                Sparkle(p, beat < 2 ? Yellow : Teal, beat < 2 ? 3 : 22, 3);
+                break;
+            }
+            case ChibiMove.Wave:
+                DrawBody(p, Ox, Oy, armsUp: t / 220 % 2 == 0, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : Eyes.Open, Mouth.Smile);
+                break;
+            case ChibiMove.Pout: // de reojo, con la boca para abajo
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, t / 600 % 2 == 0 ? Eyes.Left : Eyes.Squint, Mouth.Frown);
+                break;
+            case ChibiMove.Sulk: // «¡hmph!», con los ojos cerrados
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, Eyes.Closed, Mouth.Frown);
+                break;
+            case ChibiMove.Fury:
+            {
+                // Roja, temblando y echando llamas.
+                var dx = t / 90 % 2 == 0 ? -1 : 1;
+                DrawBody(p, Ox + dx, Oy, false, Red);
+                DrawFace(p, Ox + dx, Oy, Eyes.Squint, Mouth.Frown);
+                Flames(p, t, small: false);
+                break;
+            }
+            default: // quieta: parpadea y mira a los lados
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : (t / 1500 % 4) switch { 1 => Eyes.Left, 3 => Eyes.Right, _ => Eyes.Open }, Mouth.Neutral);
+                break;
+        }
     }
 
     static Eyes EyesFor(NoticeKind kind, long t)
@@ -82,21 +141,21 @@ static class ToastSprite
         _ => Mouth.Neutral,
     };
 
-    static void DrawBody(Painter p, int ox, int oy, bool armsUp)
+    static void DrawBody(Painter p, int ox, int oy, bool armsUp, Color body)
     {
-        p.Px(Body, ox + 3, oy + 2, 14, 7);
+        p.Px(body, ox + 3, oy + 2, 14, 7);
         if (armsUp)
         {
-            p.Px(Body, ox + 1, oy, 2, 2);
-            p.Px(Body, ox + 17, oy, 2, 2);
+            p.Px(body, ox + 1, oy, 2, 2);
+            p.Px(body, ox + 17, oy, 2, 2);
         }
         else
         {
-            p.Px(Body, ox + 1, oy + 5, 2, 2);
-            p.Px(Body, ox + 17, oy + 5, 2, 2);
+            p.Px(body, ox + 1, oy + 5, 2, 2);
+            p.Px(body, ox + 17, oy + 5, 2, 2);
         }
         foreach (var leg in new[] { 4, 6, 13, 15 })
-            p.Px(Body, ox + leg, oy + 9, 1, 2);
+            p.Px(body, ox + leg, oy + 9, 1, 2);
     }
 
     static void DrawFace(Painter p, int ox, int oy, Eyes eyes, Mouth mouth)

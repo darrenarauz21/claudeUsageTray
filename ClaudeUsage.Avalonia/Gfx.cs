@@ -16,7 +16,7 @@ sealed record UiFont(Typeface Typeface, double Size)
     public double LineHeight => _lineHeight ??= Gfx.Measure("Ág", this).Height;
 }
 
-enum Glyph { Refresh, Add, Check, Close, Bell, BellOff, ChevronDown, ChevronUp }
+enum Glyph { Refresh, Add, Check, Close, Bell, BellOff, ChevronDown, ChevronUp, Settings, Back, Message, Read, Search, Edit, Run, Agent, Web, Ask, Other }
 
 /// <summary>Fuentes, colores, texto, íconos vectoriales y pixeles para la interfaz de Avalonia.</summary>
 static class Gfx
@@ -30,6 +30,7 @@ static class Gfx
     public static readonly UiFont Body = new(new Typeface(Sans), 13);
     public static readonly UiFont BodyStrong = new(new Typeface(Sans, FontStyle.Normal, FontWeight.SemiBold), 13);
     public static readonly UiFont Small = new(new Typeface(Sans), 11.7);
+    public static readonly UiFont Tiny = new(new Typeface(Sans), 10.3);
     public static readonly UiFont ToastTitle = new(new Typeface(Sans, FontStyle.Normal, FontWeight.SemiBold), 13.3);
     public static readonly UiFont ToastBody = new(new Typeface(Sans), 12);
     public static readonly UiFont ToastSmall = new(new Typeface(Sans), 11.3);
@@ -101,7 +102,40 @@ static class Gfx
         [Glyph.BellOff] = Geometry.Parse("M4,11.5 L4,7.5 A4,4 0 0 1 12,7.5 L12,11.5 L13,12.5 L3,12.5 Z M6.5,14.5 L9.5,14.5 M2,2 L14,14"),
         [Glyph.ChevronDown] = Geometry.Parse("M4,6 L8,10 L12,6"),
         [Glyph.ChevronUp] = Geometry.Parse("M4,10 L8,6 L12,10"),
+        [Glyph.Settings] = Geometry.Parse("M12.5,8 A4.5,4.5 0 1 1 3.5,8 A4.5,4.5 0 1 1 12.5,8 M10,8 A2,2 0 1 1 6,8 A2,2 0 1 1 10,8 "
+            + "M8,1.5 L8,3.5 M8,12.5 L8,14.5 M1.5,8 L3.5,8 M12.5,8 L14.5,8 M3.4,3.4 L4.8,4.8 M11.2,11.2 L12.6,12.6 M3.4,12.6 L4.8,11.2 M11.2,4.8 L12.6,3.4"),
+        [Glyph.Back] = Geometry.Parse("M10,3.5 L5.5,8 L10,12.5"),
+        [Glyph.Message] = Geometry.Parse("M2.5,3.5 L13.5,3.5 L13.5,10.5 L6.5,10.5 L3.5,13 L3.5,10.5 L2.5,10.5 Z"),
+        [Glyph.Read] = Geometry.Parse("M4,2 L9.5,2 L12.5,5 L12.5,14 L4,14 Z M9.5,2 L9.5,5 L12.5,5"),
+        [Glyph.Search] = Geometry.Parse("M10.5,7 A3.5,3.5 0 1 1 3.5,7 A3.5,3.5 0 1 1 10.5,7 M9.5,9.5 L13.5,13.5"),
+        [Glyph.Edit] = Geometry.Parse("M3,13 L3.5,10.5 L11,3 L13,5 L5.5,12.5 Z M9.5,4.5 L11.5,6.5"),
+        [Glyph.Run] = Geometry.Parse("M3,4.5 L6.5,8 L3,11.5 M8,12 L13,12"),
+        [Glyph.Agent] = Geometry.Parse("M7.5,5.5 A2,2 0 1 1 3.5,5.5 A2,2 0 1 1 7.5,5.5 M2,13 A3.5,3.5 0 0 1 9,13 "
+            + "M12.5,6 A1.7,1.7 0 1 1 9.1,6 A1.7,1.7 0 1 1 12.5,6 M10.5,9.6 A3,3 0 0 1 14,12.5"),
+        [Glyph.Web] = Geometry.Parse("M14,8 A6,6 0 1 1 2,8 A6,6 0 1 1 14,8 M2,8 L14,8 M8,2 A9,9 0 0 1 8,14 A9,9 0 0 1 8,2"),
+        [Glyph.Ask] = Geometry.Parse("M14,8 A6,6 0 1 1 2,8 A6,6 0 1 1 14,8 M6.3,6.2 A1.8,1.8 0 1 1 8.8,7.8 Q8,8.3 8,9.4 M8,11.4 L8,11.6"),
+        [Glyph.Other] = Geometry.Parse("M4,8 L4.01,8 M8,8 L8.01,8 M12,8 L12.01,8"),
     };
+
+    // La tachuela, en una caja de 24 × 24: cuerpo cerrado (para rellenarlo) y aguja aparte.
+    static readonly Geometry PinBody = Geometry.Parse(
+        "M8.5,2.5 L15.5,2.5 L15.5,5.5 L14.8,5.5 L16,12.5 L18.5,13.5 L18.5,16 L5.5,16 L5.5,13.5 L8,12.5 L9.2,5.5 L8.5,5.5 Z");
+    static readonly Geometry PinNeedle = Geometry.Parse("M12,16 L12,22");
+
+    /// <summary>Tachuela inclinada 30°; rellena cuando la vista está fija.</summary>
+    public static void Pin(DrawingContext? dc, SD.Color color, Rect box, bool filled)
+    {
+        if (dc is null) return;
+        var scale = box.Width / 24;
+        var transform = Matrix.CreateTranslation(-12, -12) * Matrix.CreateRotation(Math.PI / 6)
+            * Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(box.Center.X, box.Center.Y);
+        using (dc.PushTransform(transform))
+        {
+            var pen = P(color, 2);
+            dc.DrawGeometry(filled ? B(color) : null, pen, PinBody);
+            dc.DrawGeometry(null, pen, PinNeedle);
+        }
+    }
 
     public static void Icon(DrawingContext? dc, Glyph glyph, SD.Color color, Rect box, double size = 16)
     {
@@ -139,14 +173,16 @@ static class Gfx
         return ToIcon(bmp);
     }
 
-    public static WindowIcon MascotIcon(MascotFrame frame)
+    public static WindowIcon RefreshIcon(string style, RefreshFrame frame, SD.Color color)
     {
         using var bmp = new RenderTargetBitmap(new PixelSize(IconSize, IconSize), new Vector(96, 96));
         using (var dc = bmp.CreateDrawingContext())
         {
-            var unit = IconSize / MascotSprite.Columns; // 2
-            Pixels(dc, (IconSize - MascotSprite.Columns * unit) / 2.0, (IconSize - MascotSprite.Rows * unit) / 2.0, unit,
-                fill => MascotSprite.Paint(fill, frame));
+            style = RefreshSprite.ForIcon(style, IconSize);
+            int columns = RefreshSprite.Columns(style), rows = RefreshSprite.Rows(style);
+            var unit = IconSize / columns; // 2
+            Pixels(dc, (IconSize - columns * unit) / 2.0, (IconSize - rows * unit) / 2.0, unit,
+                fill => RefreshSprite.Paint(fill, style, frame, color));
         }
         return ToIcon(bmp);
     }

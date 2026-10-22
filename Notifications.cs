@@ -129,7 +129,10 @@ sealed class ToastForm : Form
         var t = Environment.TickCount64 - _born;
 
         var art = new Rectangle(S(12), (ClientSize.Height - S(64)) / 2, S(78), S(64));
-        ToastArt.Draw(g, art, Notice.Kind, t);
+        if (Mascots.IsChibi) // asomado desde abajo, en todo el alto del aviso
+            ToastArt.DrawChibi(g, new Rectangle(S(8), 0, S(86), ClientSize.Height), ChibiSprite.ForNotice(Notice.Kind), t);
+        else
+            ToastArt.Draw(g, art, Notice.Kind, t, _t.Accent);
 
         var x = art.Right + S(12);
         var width = ClientSize.Width - x - S(34);

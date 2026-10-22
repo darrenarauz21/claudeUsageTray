@@ -36,8 +36,71 @@ caracteres del SHA-256 de la ruta para cada `CLAUDE_CONFIG_DIR`. La app las lee 
 
 Un botón por cuenta y, para la elegida, la sesión (5 h), la semana y la semana por modelo, con su
 barra y cuándo reinicia. Al pie, los tokens de hoy en este equipo. Al actualizar (a mano o cada
-5 minutos), la mascota ocupa el ícono y la hora del pie: abre los ojos, mira a los lados mientras
-llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
+5 minutos), la animación de lo elegido en **Ajustes › Apariencia › Mascota** ocupa el ícono y la
+hora del pie. La de siempre es la mascota clásica: abre los ojos, mira a los lados mientras llega la respuesta y hace `> <`
+antes de mostrar el estado nuevo. Con la mascota chibi, lo mismo lo hace su cabeza, que termina con
+`> <` y boca de gatito (`:3`).
+
+## Apariencia
+
+En **Ajustes**, con el mismo patrón que el estilo de sonido: una lista, la elegida marcada y una
+muestra al elegir.
+
+- **Color:** paletas fijas, cada una con su tono para el modo claro y el oscuro (el modo sigue al
+  sistema): Claude (`#D97757`, la predeterminada), Océano, Bosque, Lavanda, Rosa y Grafito. Cambia
+  el acento: barras, interruptores, enlaces, el número del ícono y la mascota del ícono, del pie y
+  de los avisos. Fondos, textos y colores de estado (peligro, aviso, éxito) no cambian. Están en
+  `Theme.Palettes` (`Core/Theme.cs`).
+- **Mascota:** junta la mascota y la animación al actualizar en una sola lista (`Mascots`, en
+  `Core/ChibiSprite.cs`). Clásica (de un color, el acento) o Chibi (ver abajo): esa mascota anima el
+  ícono y sale en los avisos. Asterisco (el ✻ de Claude Code, que crece y se encoge), Puntos (una ola
+  que termina en sonrisa) o Ninguna (el ícono sigue con el porcentaje y el pie dice «Actualizando…»):
+  ese es el estilo al actualizar y los avisos llevan la clásica. Todos usan los mismos tiempos de
+  `RefreshAnimator`; los dibujos están en `RefreshSprite` (`Core/Sprites.cs`). Al elegir uno, la app
+  actualiza para mostrarlo.
+- **Mascota en el escritorio:** la mascota (el chibi o la clásica) en su propia ventana; se enciende
+  sola al elegir el chibi.
+- **Hablar:** con la mascota en el escritorio, cuenta cada aviso en una nubecita, a su manera
+  (`MascotLines`: de tú y con caritas), además del aviso de siempre.
+
+Se guardan en `Palette`, `Animation` (el estilo al actualizar), `Mascot` (la de los avisos),
+`DesktopMascot` y `Speak` del `settings.json` de la app.
+
+## Chibi
+
+Claude con pelo naranja y hoodie de cangrejo (ojitos sobre antenas), en pixeles y con colores
+propios: no cambia con la paleta. Está en `ChibiSprite` (`Core/ChibiSprite.cs`): el cuerpo se
+escribe como su mitad izquierda, una letra por color, y se espeja; cada cuadro cambia ojos, boca,
+ojitos de cangrejo y brazos, mueve la cabeza o el cuerpo y agrega efectos. El lienzo es de 40 × 52
+casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en íconos de menos de
+32 px (la bandeja de Windows al 100 o 150 %) va una de 16 × 16, que se ve nítida.
+
+| Movimiento | Cuándo |
+|---|---|
+| Quieta (parpadea y mira) | hay sesiones, ninguna trabaja |
+| Bailar | alguna sesión trabaja |
+| Pensar (manito en la boca) | alguna espera su respuesta; en los avisos de pregunta, permiso, reintento, uso alto y sesión vencida |
+| Dormida | no hay sesiones; aviso de sesión cerrada |
+| Festejar | terminó |
+| Chachachá con maracas | se renovó un límite (sesión o semana) |
+| Mareada | falló; uso crítico |
+| Saludar | al aparecer y con un clic |
+| Puchero | 3 a 5 clics seguidos |
+| Brazos cruzados («¡hmph!») | 6 a 8 clics seguidos |
+| Furia (roja, brazos en Λ, humo y 💢) | 9 clics seguidos o más; se le pasa a los 4 s sin clics |
+
+Con un aviso, la mascota del escritorio hace el mismo gesto del aviso unos segundos y después vuelve
+a lo que corresponda.
+
+En los avisos asoma desde abajo (de la cabeza al ruedo). En el escritorio vive en una ventana sin
+marco ni fondo, siempre encima, que no quita el foco: se arrastra para moverla, sin salirse de la
+pantalla (la posición queda en `DesktopMascotX` y `DesktopMascotY`), y el clic derecho la abre o la
+oculta. `ChibiDirector` decide qué hace según las sesiones, que la app sigue leyendo mientras la
+mascota esté a la vista aunque las notificaciones estén apagadas. La mascota clásica también puede
+estar en el escritorio, con los mismos movimientos armados con sus dibujos de los avisos
+(`ToastSprite.PaintMove`). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
+mascota (o abajo, si no cabe), la sigue al arrastrarla y se va a los 8 s; un clic abre lo mismo que
+el aviso.
 
 ## Sesiones
 
@@ -51,9 +114,54 @@ llega la respuesta y hace `> <` antes de mostrar el estado nuevo.
 
 Mientras trabaja, la sesión muestra lo que está haciendo, los pasos del turno y el tiempo. Con
 lista de tareas (`TodoWrite`), la barra pasa a «3 de 5 tareas». Clic: despliega el último pedido,
-la carpeta y las interacciones. Clic derecho: abrir la carpeta o copiar el ID. Solo se cuentan
-los procesos vivos: `procStart` (no documentado) se compara con la hora de inicio del proceso en
-los formatos conocidos y, si el formato no se reconoce, basta con que el proceso exista.
+la carpeta, el modelo y las interacciones. Clic derecho: nueva sesión en esa carpeta, abrir la
+carpeta o copiar el ID. Solo se cuentan los procesos vivos: `procStart` (no documentado) se compara
+con la hora de inicio del proceso en los formatos conocidos y, si el formato no se reconoce, basta
+con que el proceso exista.
+
+La línea «Modelo» sale de la última respuesta del `.jsonl`: `message.model`, `effort` y
+`advisorModel` (no documentados). Un `/model` o `/effort` se ve recién en la respuesta siguiente.
+
+## Vistas fijas y ajustes
+
+La cabecera muestra siempre 3 vistas fijas (por defecto Uso, Sesiones y Actividad). El botón de la
+tachuela abre la lista de todas: clic en el nombre la abre sin fijarla (el botón muestra su nombre
+si cabe); el pin de una vista libre la prepara y el pin de una fija hace el cambio en ese lugar,
+así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
+engranaje del pie abre **Ajustes** (notificaciones, sonido, apariencia, cuentas, inicio con el sistema, hook,
+diagnóstico); el menú del ícono queda en abrir, actualizar, nueva sesión, ajustes y salir.
+
+## Flujos
+
+Un carril por sesión activa: «Pedido», «+N» con lo anterior y los últimos grupos de pasos del
+turno (los seguidos de la misma herramienta se juntan: «Leyendo ×3»). Mientras la sesión trabaja
+siempre hay algo animado: si el último paso sigue en curso, late; si ya volvió (leer o buscar duran
+milisegundos), aparece al final «Pensando…» con el asterisco que gira. Un punto viaja hacia el
+último nodo, cada paso nuevo entra creciendo y el ícono de actualizar gira mientras actualiza; en
+ámbar si la sesión le espera. Debajo, el último subagente y su estado. Clic en un carril: el mapa
+de esa sesión, con la cuenta, la sesión, cuántas veces usó cada familia de herramientas en el turno
+(línea animada hacia la herramienta en uso, o de vuelta a la sesión mientras piensa), el subagente
+y los últimos 5 pasos con su hora. Sale del mismo `.jsonl` que la vista Sesiones: cada `tool_use`
+es un paso y su `tool_result` lo cierra; del subagente se toman `agentType` y `totalToolUseCount`
+del resultado. La lógica común está en `Core/Flows.cs`.
+
+## Nueva sesión
+
+Desde el menú del ícono o el de una sesión. Abre una terminal en la carpeta elegida, fija
+`CLAUDE_CONFIG_DIR` de la cuenta (o lo quita para `~/.claude`) y ejecuta
+`claude --model … --effort … --advisor …`:
+
+- **Windows:** Windows Terminal, o PowerShell si no está.
+- **macOS:** Terminal, con `osascript` (`do script`), en el shell de inicio de la persona.
+- **Linux:** la primera instalada entre gnome-terminal, konsole, xfce4-terminal, kitty, alacritty,
+  wezterm, tilix, xterm y x-terminal-emulator, con `bash -lc` (para que `claude` esté en el PATH);
+  al salir de Claude Code queda abierto el shell de la persona.
+
+Esas opciones valen solo para esa sesión: no tocan el `settings.json` de la cuenta.
+«Predeterminado» omite la opción; el asesor «Ninguno» se apaga con
+`CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, porque `--advisor` no acepta `off`. `--advisor` no aparece
+en `claude --help`; se comprobó con Claude Code 2.1.296. Lo último elegido se guarda en
+`settings.json` de la app (`Launch`). Los scripts están en `Core/Launcher.cs`.
 
 ## Avisos
 
@@ -83,8 +191,10 @@ respaldo) y que solo guarda el evento y termina:
 
 ## Sonido
 
-Dos estilos generados por la app, **Clásico** y **Risitas**, con una variante por caso. Carpetas
-`clasico/` y `risitas/` (se regeneran si se borran o si cambia la versión del estilo) y `propios/`,
+Tres estilos generados por la app, **Clásico**, **Risitas** y **Chibi** (un «¡oi!», con la «o» que
+se desliza a «i», y un «¡uwaaa!» si algo falla; voz femenina adulta sintetizada, como una voz de
+lectura en japonés), con una variante por caso. Carpetas `clasico/`,
+`risitas/` y `chibi/` (se regeneran si se borran o si cambia la versión del estilo) y `propios/`,
 donde un `.wav` o `.mp3` con el mismo nombre (`terminado`, `pregunta`, `permiso`, `fallo`, `uso`,
 `aviso`) manda sobre el estilo. Se reproducen con winmm en Windows, `afplay` en macOS y `paplay`,
 `pw-play` o `aplay` en Linux.
@@ -124,7 +234,7 @@ Opciones de línea de comandos (las dos apps):
 
 ## Si no salen avisos
 
-**Copiar diagnóstico**, en el menú del ícono, copia un resumen sin correos ni tokens: versiones,
+**Copiar diagnóstico**, en **Ajustes**, copia un resumen sin correos ni tokens: versiones,
 si las notificaciones están encendidas y cada carpeta `~/.claude*` con sus credenciales, sesiones
 registradas y vivas, y el hook. Lo habitual:
 
@@ -154,7 +264,7 @@ Lo que no se pudo probar sin una Mac. Para quien la pruebe por primera vez:
    en **Acceso a Llaveros** que exista «Claude Code-credentials» (o «…-credentials-xxxxxxxx» si se
    usa `CLAUDE_CONFIG_DIR`) y responder **Permitir siempre** cuando macOS lo pregunte.
 3. **Sesiones** muestra las sesiones abiertas de Claude Code y su estado.
-4. **Ver un aviso de ejemplo** muestra el aviso arriba a la derecha y suena.
-5. **Configurar…** agrega el hook; al pedir permiso una sesión nueva, sale «Necesita su permiso».
+4. **Ajustes › Ver un aviso de ejemplo** muestra el aviso arriba a la derecha y suena.
+5. **Ajustes › Configurar…** agrega el hook; al pedir permiso una sesión nueva, sale «Necesita su permiso».
 6. **Iniciar con el sistema** crea `~/Library/LaunchAgents/local.usodeclaude.plist`.
-7. **Copiar diagnóstico**: pegar el resultado si algo falla.
+7. **Ajustes › Copiar diagnóstico**: pegar el resultado si algo falla.

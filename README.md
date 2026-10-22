@@ -5,11 +5,26 @@ de Mac) y le muestra, de un vistazo, cuánto le queda de Claude y qué están ha
 de Claude Code.
 
 - **Uso:** el porcentaje de su sesión de 5 horas y de la semana, por cuenta, y cuándo se reinicia.
-- **Sesiones:** qué sesiones de Claude Code tiene abiertas y si están trabajando, esperando su
-  respuesta o ya terminaron.
+- **Sesiones:** qué sesiones de Claude Code tiene abiertas, si están trabajando, esperando su
+  respuesta o ya terminaron, y con qué modelo, esfuerzo y asesor.
+- **Nueva sesión:** abre Claude Code en una terminal con la cuenta, la carpeta, el modelo, el
+  esfuerzo y el asesor que usted elija para esa sesión.
+- **Flujos:** lo que hace cada sesión, paso a paso y animado; clic en una sesión muestra su mapa
+  de herramientas. Sale de los archivos de Claude Code: no gasta tokens.
 - **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
 - **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
   necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
+- **Apariencia:** el color de la app (el naranja de Claude u otra paleta) y la mascota que anima el
+  ícono al actualizar y sale en los avisos (la clásica, el chibi, el asterisco, los puntos o
+  ninguna), en **Ajustes**.
+- **Chibi:** una mascota más, Claude con pelo naranja y hoodie de cangrejo. Aparece en los avisos y
+  al actualizar, y puede quedarse en el escritorio: baila mientras sus sesiones trabajan, piensa
+  cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas cuando se renueva
+  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia. Trae su
+  propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en
+  japonés.
+- **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
+  el escritorio y contar los avisos en una nubecita, a su manera.
 
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.
@@ -68,18 +83,21 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 
 ## Cómo se usa
 
-- **Clic en el ícono:** abre la ventana. Arriba elige **Uso**, **Sesiones** o **Actividad**.
+- **Clic en el ícono:** abre la ventana. Arriba están las 3 vistas fijas (al principio **Uso**,
+  **Sesiones** y **Actividad**); el botón con la tachuela abre las demás (como **Flujos**) y permite
+  cambiar cuál queda fija. El engranaje del pie abre los **Ajustes**.
 - **El número del ícono** es el porcentaje de su sesión de 5 horas.
 - **Clic en un aviso:** abre la sesión o la cuenta de la que habla.
-- **Menú del ícono** (clic derecho; en Mac, clic): actualizar, agregar otra cuenta, encender o
-  apagar notificaciones y sonido, elegir el estilo de sonido, ver un aviso de ejemplo y salir.
+- **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
+- **Menú del ícono** (clic derecho; en Mac, clic): abrir, actualizar, nueva sesión, ajustes y salir.
+  Notificaciones, sonido, color, animación, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
 
 ## Si algo no funciona
 
-- **No salen avisos:** use **Copiar diagnóstico** en el menú del ícono y compártalo con quien le
+- **No salen avisos:** use **Copiar diagnóstico** en **Ajustes** (el engranaje del pie) y compártalo con quien le
   pasó la app.
 - **Dice «Sesión vencida»:** abra Claude Code con esa cuenta y se arregla sola.
-- **Para quitarla:** use **Quitar configuración…** en el menú y después borre la app.
+- **Para quitarla:** use **Quitar…** en **Ajustes** y después borre la app.
 
 Los detalles técnicos (de dónde sale cada dato, cómo compilarla y empaquetarla) están en
 [DETALLES.md](DETALLES.md).

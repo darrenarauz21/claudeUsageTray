@@ -21,18 +21,19 @@ sealed class TrayController
     readonly DispatcherTimer _sessionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly SessionMonitor _monitor = new();
     readonly ActivityTracker _activity = new();
-    readonly MascotAnimator _mascot = new();
-    readonly Dictionary<MascotFrame, WindowIcon> _mascotIcons = new();
+    readonly RefreshAnimator _refresh = new();
+    readonly Dictionary<RefreshFrame, WindowIcon> _refreshIcons = new();
     readonly AppSettings _settings;
     readonly Dictionary<string, UsageSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, Profile> _profiles = new(StringComparer.OrdinalIgnoreCase);
     readonly NoticeDetector _detector = new();
     readonly ToastStack _toasts = new();
     readonly Sounds _sounds = new();
-    readonly NativeMenuItem _startupItem, _notifyItem, _soundItem;
-    readonly List<NativeMenuItem> _styleItems = new();
+    readonly ChibiDirector _director = new();
 
-    Theme _theme;
+    readonly BubbleWindow _bubble = new();
+    MascotWindow? _mascotWindow;
+    Theme _theme = Theme.Light;
     LocalTotals? _local;
     DateTime? _updated;
     bool _busy, _scanning, _counting;
@@ -51,53 +52,27 @@ sealed class TrayController
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
 
-        _theme = Theme.ForDark(app.ActualThemeVariant == ThemeVariant.Dark);
-        _popup.ApplyTheme(_theme);
-        app.ActualThemeVariantChanged += (_, _) =>
-        {
-            _theme = Theme.ForDark(app.ActualThemeVariant == ThemeVariant.Dark);
-            _popup.ApplyTheme(_theme);
-            UpdateTray();
-        };
+        Theme.SelectedPalette = _settings.Palette;
+        Mascots.Choose(_settings, Mascots.ChoiceOf(_settings)); // deja en orden lo guardado por versiones anteriores
+        Mascots.Selected = _settings.Mascot;
+        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, _settings.Mascot);
+        ApplyTheme();
+        app.ActualThemeVariantChanged += (_, _) => ApplyTheme();
 
-        // Menú del ícono.
+        // Menú del ícono: corto; lo demás está en la vista Ajustes (engranaje del pie).
         var menu = new NativeMenu();
-        NativeMenuItem Item(string header, Action action)
+        void Item(string header, Action action)
         {
             var item = new NativeMenuItem(header);
             item.Click += (_, _) => action();
             menu.Add(item);
-            return item;
-        }
-        NativeMenuItem Check(string header, bool isChecked, Action action)
-        {
-            var item = Item(header, action);
-            item.ToggleType = NativeMenuItemToggleType.CheckBox;
-            item.IsChecked = isChecked;
-            return item;
         }
         Item("Abrir", ShowForm);
         Item("Actualizar", () => _ = RefreshAsync());
-        Item("Agregar cuenta…", () => _ = AddAccountAsync());
+        Item("Nueva sesión…", () => _ = NewSessionAsync(null));
         menu.Add(new NativeMenuItemSeparator());
-        _startupItem = Check("Iniciar con el sistema", StartupRegistration.IsEnabled, ToggleStartup);
-        _notifyItem = Check("Notificaciones", _settings.Notifications, ToggleNotifications);
-        _soundItem = Check("Sonido", _settings.Sound, ToggleSound);
-        var style = new NativeMenuItem("Estilo de sonido") { Menu = new NativeMenu() };
-        foreach (var (id, label) in Sounds.Packs)
-        {
-            var item = new NativeMenuItem(label) { ToggleType = NativeMenuItemToggleType.Radio, IsChecked = _settings.SoundPack == id };
-            item.Click += (_, _) => SetSoundPack(id);
-            style.Menu.Add(item);
-            _styleItems.Add(item);
-        }
-        menu.Add(style);
-        Item("Abrir carpeta de sonidos", () => { Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); });
-        Item("Ver un aviso de ejemplo", ShowNextSample);
-        Item("Copiar diagnóstico", () => _ = CopyDiagnosticsAsync());
+        Item("Ajustes…", () => { ShowForm(); View.ShowSettings(); });
         menu.Add(new NativeMenuItemSeparator());
-        Item("Configurar…", () => _ = ShowSetupAsync());
-        Item("Quitar configuración…", () => _ = RemoveSetupAsync());
         Item("Salir", Quit);
 
         _tray.Menu = menu;
@@ -117,9 +92,17 @@ sealed class TrayController
             SettingsStore.Save(_settings);
             UpdateTray();
         };
-        View.NotificationsOn = _settings.Notifications;
-        View.NotificationsToggled += ToggleNotifications;
+        View.SetPinned(_settings.PinnedViews);
+        View.PinnedChanged += views =>
+        {
+            _settings.PinnedViews = views.ToList();
+            SettingsStore.Save(_settings);
+        };
+        View.SettingRequested += action => _ = OnSettingAsync(action);
+        View.NewSessionRequested += session => _ = NewSessionAsync(session);
+        PushSettings();
         _toasts.Clicked += OpenNotice;
+        _bubble.Clicked += OpenNotice;
         _toasts.Shown += () => _noticesShown++;
 
         // Sesiones: cada 1,5 s con la ventana abierta y cada 3 s cerrada (solo con notificaciones).
@@ -132,17 +115,9 @@ sealed class TrayController
             if (_popup.IsVisible) _ = ScanSessionsAsync();
         };
 
-        // La mascota ocupa el ícono y la hora del pie mientras se actualiza.
-        _mascot.FrameChanged += () =>
-        {
-            if (_mascot.Frame is { } frame)
-            {
-                if (!_mascotIcons.TryGetValue(frame, out var icon)) _mascotIcons[frame] = icon = Gfx.MascotIcon(frame);
-                _tray.Icon = icon;
-            }
-            View.SetMascot(_mascot.Frame);
-        };
-        _mascot.Completed += () =>
+        // La animación (la mascota u otro estilo) ocupa el ícono y la hora del pie mientras se actualiza.
+        _refresh.FrameChanged += ShowRefreshFrame;
+        _refresh.Completed += () =>
         {
             _pendingApply?.Invoke();
             _pendingApply = null;
@@ -163,6 +138,7 @@ sealed class TrayController
             Render();
             if (showOnStart) ShowForm();
             if (demo) ShowSamples();
+            UpdateMascotWindow();
             if (autoSetup && NeedsSetup()) await ShowSetupAsync();
             await RefreshAsync();
         });
@@ -173,7 +149,7 @@ sealed class TrayController
         if (_busy) return;
         _busy = true;
         View.SetBusy(true);
-        _mascot.Start();
+        _refresh.Start();
         try
         {
             if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
@@ -183,7 +159,7 @@ sealed class TrayController
             var local = await Task.Run(() => LocalUsage.ScanToday(accounts.Select(a => a.ConfigDir)));
             var updated = DateTime.Now;
 
-            // Los datos nuevos se aplican cuando la mascota termina, no antes.
+            // Los datos nuevos se aplican cuando la animación termina, no antes.
             _pendingApply = () =>
             {
                 for (var i = 0; i < accounts.Count; i++)
@@ -204,7 +180,7 @@ sealed class TrayController
         {
             _busy = false;
             View.SetBusy(false);
-            _mascot.Finish();
+            _refresh.Finish();
         }
     }
 
@@ -218,13 +194,14 @@ sealed class TrayController
 
     async Task ScanSessionsAsync()
     {
-        if (_scanning || (!_popup.IsVisible && !_settings.Notifications)) return;
+        if (_scanning || (!_popup.IsVisible && !_settings.Notifications && _mascotWindow is null)) return;
         _scanning = true;
         try
         {
             var accounts = _settings.Accounts.ToList();
             var sessions = await Task.Run(() => _monitor.Scan(accounts));
             View.SetSessions(sessions);
+            _director.SetSessions(sessions);
             _lastSessions = sessions;
             if (_settings.Notifications)
             {
@@ -238,14 +215,88 @@ sealed class TrayController
     void ShowNotice(Notice notice)
     {
         _toasts.Show(notice, _theme);
+        _director.Notice(notice.Kind);
+        if (_mascotWindow is { } mascot && _settings.Speak) _bubble.Say(notice, mascot.Chibi, mascot.ScreenBounds);
         if (_settings.Sound) _sounds.Play(notice.Kind, _settings.SoundPack);
+    }
+
+    /// <summary>Lo que la vista Ajustes muestra: se manda de nuevo cada vez que algo cambia.</summary>
+    void PushSettings()
+    {
+        var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
+        View.SetSettingsState(new UsageView.SettingsState(
+                _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
+                Mascots.Label(Mascots.ChoiceOf(_settings)), _settings.DesktopMascot, _settings.DesktopMascot ? _settings.Speak : null,
+                StartupRegistration.IsEnabled, _settings.Accounts.Count),
+            _settings.SoundPack, _settings.Palette, Mascots.ChoiceOf(_settings));
+    }
+
+    async Task OnSettingAsync(string action)
+    {
+        if (action.StartsWith("pack:", StringComparison.Ordinal)) SetSoundPack(action[5..]);
+        else if (action.StartsWith("palette:", StringComparison.Ordinal)) SetPalette(action[8..]);
+        else if (action.StartsWith("mascot:", StringComparison.Ordinal)) SetMascot(action[7..]);
+        else
+        {
+            switch (action)
+            {
+                case "notify": ToggleNotifications(); break;
+                case "sound": ToggleSound(); break;
+                case "startup": ToggleStartup(); break;
+                case "desk": ToggleDesktopMascot(); break;
+                case "speak": ToggleSpeak(); break;
+                case "sample": ShowNextSample(); break;
+                case "sounds": Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); break;
+                case "add": await AddAccountAsync(); break;
+                case "setup": await ShowSetupAsync(); break;
+                case "diag": await CopyDiagnosticsAsync(); break;
+                case "unsetup":
+                    _popup.HoldOpen = true;
+                    try { await RemoveSetupAsync(); }
+                    finally { _popup.HoldOpen = false; }
+                    break;
+            }
+        }
+        PushSettings();
+    }
+
+    /// <summary>Desde una sesión, propone su cuenta y su carpeta; el resto, lo último elegido.</summary>
+    async Task NewSessionAsync(SessionInfo? from)
+    {
+        var initial = _settings.Launch;
+        if (from is not null)
+            initial = new LaunchOptions
+            {
+                ConfigDir = from.Account.ConfigDir, Folder = from.Cwd,
+                Model = initial.Model, Effort = initial.Effort, Advisor = initial.Advisor,
+            };
+        var recent = (_lastSessions ?? []).Select(s => s.Cwd).Prepend(initial.Folder ?? "");
+
+        _popup.HoldOpen = true;
+        try
+        {
+            var dialog = new NewSessionWindow(_settings.Accounts, initial, recent, _theme);
+            dialog.Show();
+            dialog.Activate();
+            if (await dialog.Result is not { } options) return;
+            _settings.Launch = options;
+            SettingsStore.Save(_settings);
+            Launcher.Start(options);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.Info($"No se pudo abrir la sesión: {ex.Message}", _theme);
+        }
+        finally
+        {
+            _popup.HoldOpen = false;
+        }
     }
 
     void ToggleSound()
     {
         _settings.Sound = !_settings.Sound;
         SettingsStore.Save(_settings);
-        _soundItem.IsChecked = _settings.Sound;
         if (_settings.Sound) _sounds.Play(NoticeKind.Done, _settings.SoundPack, force: true);
     }
 
@@ -253,16 +304,104 @@ sealed class TrayController
     {
         _settings.SoundPack = pack;
         SettingsStore.Save(_settings);
-        for (var i = 0; i < _styleItems.Count; i++) _styleItems[i].IsChecked = Sounds.Packs[i].Id == pack;
         _sounds.Play(NoticeKind.Done, pack, force: true);
+    }
+
+    void SetPalette(string palette)
+    {
+        _settings.Palette = palette;
+        SettingsStore.Save(_settings);
+        Theme.SelectedPalette = palette;
+        ApplyTheme();
+    }
+
+    /// <summary>Lo elegido en «Mascota»: la mascota de los avisos y la animación al actualizar.</summary>
+    void SetMascot(string choice)
+    {
+        var wasChibi = _settings.Mascot == Mascots.Chibi;
+        Mascots.Choose(_settings, choice);
+        if (!wasChibi && _settings.Mascot == Mascots.Chibi) _settings.DesktopMascot = true; // el chibi sale al escritorio
+        SettingsStore.Save(_settings);
+        Mascots.Selected = _settings.Mascot; // los avisos la leen al dibujarse
+        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, _settings.Mascot);
+        _refreshIcons.Clear();
+        ShowRefreshFrame();
+        UpdateMascotWindow();
+        _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
+    }
+
+    void ToggleDesktopMascot()
+    {
+        _settings.DesktopMascot = !_settings.DesktopMascot;
+        SettingsStore.Save(_settings);
+        UpdateMascotWindow();
+    }
+
+    void ToggleSpeak()
+    {
+        _settings.Speak = !_settings.Speak;
+        SettingsStore.Save(_settings);
+        if (!_settings.Speak) _bubble.Hide();
+    }
+
+    /// <summary>
+    /// La mascota del escritorio está si no se ocultó; si cambia de mascota (chibi o clásica), la
+    /// ventana se rehace con la nueva.
+    /// </summary>
+    void UpdateMascotWindow()
+    {
+        var wanted = _settings.DesktopMascot;
+        if (_mascotWindow is { } current && (!wanted || current.Chibi != Mascots.IsChibi))
+        {
+            _bubble.Hide();
+            current.Close();
+            _mascotWindow = null;
+        }
+        if (!wanted || _mascotWindow is not null) return;
+        PixelPoint? saved = _settings.DesktopMascotX is { } x && _settings.DesktopMascotY is { } y ? new PixelPoint(x, y) : null;
+        _mascotWindow = new MascotWindow(_director, saved, Mascots.IsChibi, () => _theme.Accent);
+        _mascotWindow.PositionChanged += (_, _) =>
+        {
+            if (_bubble.IsVisible && _mascotWindow is { } moved) _bubble.Follow(moved.ScreenBounds);
+        };
+        _mascotWindow.OpenRequested += ShowForm;
+        _mascotWindow.HideRequested += () => { ToggleDesktopMascot(); PushSettings(); };
+        _mascotWindow.Moved += at =>
+        {
+            (_settings.DesktopMascotX, _settings.DesktopMascotY) = (at.X, at.Y);
+            SettingsStore.Save(_settings);
+        };
+        _mascotWindow.Show();
+        _ = ScanSessionsAsync(); // para que empiece haciendo lo que corresponde
+    }
+
+    /// <summary>Toma el tema del momento (modo del sistema y paleta elegida): ventana, ícono y animación.</summary>
+    void ApplyTheme()
+    {
+        _theme = Theme.ForDark(_app.ActualThemeVariant == ThemeVariant.Dark);
+        _popup.ApplyTheme(_theme);
+        _refreshIcons.Clear(); // se vuelven a dibujar con el acento nuevo
+        ShowRefreshFrame();
+        UpdateTray();
+    }
+
+    /// <summary>El cuadro actual de la animación en el ícono y en el pie de la ventana.</summary>
+    void ShowRefreshFrame()
+    {
+        if (_refresh.Frame is { } frame)
+        {
+            if (!_refreshIcons.TryGetValue(frame, out var icon))
+                _refreshIcons[frame] = icon = Gfx.RefreshIcon(_refresh.Style, frame, _theme.Accent);
+            _tray.Icon = icon;
+        }
+        View.SetRefreshFrame(_refresh.Frame, _refresh.Style);
     }
 
     void ToggleNotifications()
     {
         _settings.Notifications = !_settings.Notifications;
         SettingsStore.Save(_settings);
-        _notifyItem.IsChecked = _settings.Notifications;
-        View.NotificationsOn = _settings.Notifications;
+        PushSettings();
         if (_settings.Notifications) _detector.Reset();
         else _toasts.CloseAll();
     }
@@ -316,6 +455,7 @@ sealed class TrayController
     void Render()
     {
         UpdateTray();
+        PushSettings(); // la cantidad de cuentas puede haber cambiado
         View.Render(_settings.Accounts, _settings.Selected, _snapshots, _profiles, _local, _updated);
     }
 
@@ -327,7 +467,7 @@ sealed class TrayController
         if (selected is not null) _snapshots.TryGetValue(selected.ConfigDir, out snap);
         var session = snap?.Session;
 
-        if (!_mascot.Running)
+        if (!_refresh.Running)
         {
             SD.Color color = session is null || snap!.Error is not null ? _theme.Tertiary : _theme.For(session.Percent, session.Severity);
             _tray.Icon = Gfx.PercentIcon(session?.Percent, color);
@@ -423,7 +563,7 @@ sealed class TrayController
     void ToggleStartup()
     {
         try { StartupRegistration.Set(!StartupRegistration.IsEnabled); } catch (Exception) { }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
     }
 
     IEnumerable<string> SetupDirs()
@@ -460,7 +600,7 @@ sealed class TrayController
             lines.Add(setup.StartWithSystem ? "Iniciará con el sistema." : "No iniciará con el sistema.");
         }
         catch (Exception ex) { lines.Add($"Iniciar con el sistema: no se pudo cambiar ({ex.Message})."); }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
         if (setup.NotificationsOn != _settings.Notifications) ToggleNotifications();
         lines.Add(_settings.Notifications ? "Notificaciones encendidas." : "Notificaciones apagadas.");
         if (lines.Any(l => l.Contains("hook")))
@@ -484,7 +624,7 @@ sealed class TrayController
         }
         try { StartupRegistration.Set(false); lines.Add("Ya no inicia con el sistema."); }
         catch (Exception ex) { lines.Add($"Iniciar con el sistema: no se pudo quitar ({ex.Message})."); }
-        _startupItem.IsChecked = StartupRegistration.IsEnabled;
+        PushSettings();
         await Dialogs.Info(string.Join(Environment.NewLine, lines), _theme);
     }
 
@@ -493,8 +633,10 @@ sealed class TrayController
         _timer.Stop();
         _sessionTimer.Stop();
         _toasts.CloseAll();
+        _mascotWindow?.Close();
+        _bubble.Close();
         _sounds.Dispose();
-        _mascot.Dispose();
+        _refresh.Dispose();
         _tray.IsVisible = false;
         _tray.Dispose();
         if (_app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime) lifetime.Shutdown();

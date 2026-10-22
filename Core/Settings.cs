@@ -43,8 +43,27 @@ sealed class AppSettings
     public bool Notifications { get; set; } = true;
     public bool Sound { get; set; } = true;
     public string SoundPack { get; set; } = "clasico";
+    /// <summary>Paleta del acento (Theme.Palettes).</summary>
+    public string Palette { get; set; } = "claude";
+    /// <summary>Animación al actualizar (RefreshSprite.Styles). Se elige junto con Mascot, en la opción «Mascota» (Mascots).</summary>
+    public string Animation { get; set; } = "mascota";
+    /// <summary>Mascota de los avisos y de la animación «mascota»: Mascots.Classic o Mascots.Chibi.</summary>
+    public string Mascot { get; set; } = Mascots.Classic;
+    /// <summary>La mascota (el chibi o la clásica) en su propia ventana sobre el escritorio. Se enciende al elegir el chibi.</summary>
+    public bool DesktopMascot { get; set; }
+    /// <summary>«Hablar»: la mascota del escritorio cuenta los avisos en una nubecita, además del aviso de siempre.</summary>
+    public bool Speak { get; set; } = true;
+    /// <summary>Dónde quedó la ventana de la mascota al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
+    public int? DesktopMascotX { get; set; }
+    public int? DesktopMascotY { get; set; }
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
+    /// <summary>Lo último elegido en «Nueva sesión».</summary>
+    public LaunchOptions Launch { get; set; } = new();
+    /// <summary>Las 3 vistas fijas como pestañas, en orden. Las demás se abren desde el selector.</summary>
+    public List<string> PinnedViews { get; set; } = [.. DefaultPinned];
+
+    public static readonly string[] DefaultPinned = ["Usage", "Sessions", "Activity"];
 }
 
 static class SettingsStore

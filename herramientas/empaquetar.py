@@ -26,7 +26,7 @@ OUT = os.path.join(ROOT, "paquetes")
 WORK = os.path.join(OUT, "_trabajo")
 AVALONIA = os.path.join(ROOT, "ClaudeUsage.Avalonia", "ClaudeUsage.Avalonia.csproj")
 WINDOWS = os.path.join(ROOT, "ClaudeUsageTray.csproj")
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 # ── Íconos: la misma mascota que app.ico, en pixeles ─────────────────────────────────────────
 
