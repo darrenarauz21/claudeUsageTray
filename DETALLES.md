@@ -88,6 +88,7 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Puchero | 3 a 5 clics seguidos |
 | Brazos cruzados («¡hmph!») | 6 a 8 clics seguidos |
 | Furia (roja, brazos en Λ, humo y 💢) | 9 clics seguidos o más; se le pasa a los 4 s sin clics |
+| Se calma (suspira y mira de reojo a los lados, buscando quién fue) | al pasársele el puchero, los brazos cruzados o la furia; después vuelve a lo que corresponda |
 
 Con un aviso, la mascota del escritorio hace el mismo gesto del aviso unos segundos y después vuelve
 a lo que corresponda.

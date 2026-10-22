@@ -20,7 +20,8 @@ de Claude Code.
 - **Chibi:** una mascota más, Claude con pelo naranja y hoodie de cangrejo. Aparece en los avisos y
   al actualizar, y puede quedarse en el escritorio: baila mientras sus sesiones trabajan, piensa
   cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas cuando se renueva
-  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia. Trae su
+  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia; cuando
+  se le pasa, suspira y busca de reojo quién fue. Trae su
   propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en
   japonés.
 - **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
