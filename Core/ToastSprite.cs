@@ -110,6 +110,20 @@ static class ToastSprite
                 Flames(p, t, small: false);
                 break;
             }
+            case ChibiMove.Calm: // como el chibi: suspira, mira a un lado y al otro y parpadea
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, t switch
+                {
+                    < 900 => Eyes.Closed,
+                    < 1150 => Eyes.Open,
+                    < 1850 => Eyes.Left,
+                    < 2550 => Eyes.Right,
+                    < 2900 => Eyes.Left,
+                    < 3250 => Eyes.Right,
+                    >= 3500 and < 3610 => Eyes.Closed,
+                    _ => Eyes.Open,
+                }, Mouth.Neutral);
+                break;
             default: // quieta: parpadea y mira a los lados
                 DrawBody(p, Ox, Oy, false, body);
                 DrawFace(p, Ox, Oy, blink ? Eyes.Closed : (t / 1500 % 4) switch { 1 => Eyes.Left, 3 => Eyes.Right, _ => Eyes.Open }, Mouth.Neutral);

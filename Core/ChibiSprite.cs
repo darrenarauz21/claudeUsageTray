@@ -33,7 +33,7 @@ static class Mascots
 }
 
 /// <summary>Lo que hace el chibi: cada movimiento es una secuencia de cuadros que se repite.</summary>
-enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury }
+enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury, Calm }
 
 /// <summary>
 /// El chibi de Claude: pelo naranja y hoodie de cangrejo (ojitos sobre antenas), en pixeles. El
@@ -165,7 +165,7 @@ static class ChibiSprite
     ];
 
     enum Arm { Down, Up, Wave, Out, Think, Angry }
-    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed }
+    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed, AnnoyedRight }
     enum Mouth { Smile, Open, Small, Oh, Wavy, Cat, Pout }
 
     // Brazo izquierdo en cada pose: esquina (en casillas del chibi) y filas; el derecho se espeja.
@@ -242,6 +242,7 @@ static class ChibiSprite
         [Eyes.Dizzy] = [".....", "KKKKK", "....K", ".KK.K", ".K..K", ".KKKK"],
         [Eyes.Squeeze] = ["....", "KK..", "..KK", "KK..", "....", "...."], // > (el derecho, espejado: <)
         [Eyes.Annoyed] = ["....", "....", "KKKK", "KKaa", "KKAA", ".AA."], // párpado a media altura, de reojo
+        [Eyes.AnnoyedRight] = ["....", "....", "KKKK", "aaKK", "AAKK", ".AA."], // de reojo al otro lado
     };
 
     // Bocas de 4 × 2 desde la columna 14, fila 25.
@@ -355,6 +356,9 @@ static class ChibiSprite
         return 0;
     }
 
+    /// <summary>Cuánto dura una vuelta del movimiento, en ms.</summary>
+    public static int Length(ChibiMove move) => Moves[move].Sum(f => f.Ms);
+
     /// <summary>La cabeza sola en un cuadro de la animación al actualizar: la grande (32 × 32) o la chica (16 × 16).</summary>
     public static void PaintHead(PixelFill fill, MascotFrame frame, bool small = false) =>
         Emit(fill, (small ? SmallHeads : Heads)[frame]);
@@ -397,6 +401,9 @@ static class ChibiSprite
         var pout = new Pose { Eyes = Eyes.Annoyed, Mouth = Mouth.Pout, Head = -1, Cheeks = true, Crab = (0, 1) };
         var sulk = new Pose { Eyes = Eyes.Closed, Mouth = Mouth.Pout, Head = 1, Cheeks = true, Folded = true, Crab = (2, 1) };
         var fury = new Pose { Eyes = Eyes.Squeeze, Mouth = Mouth.Pout, Cheeks = true, Left = Arm.Angry, Right = Arm.Angry, Red = true, Crab = (1, 2) };
+        var sigh = new Pose { Eyes = Eyes.Closed, Mouth = Mouth.Small, Crab = null };
+        var lookLeft = new Pose { Eyes = Eyes.Annoyed, Mouth = Mouth.Small, Head = -1, Crab = (0, 1) };
+        var lookRight = lookLeft with { Eyes = Eyes.AnnoyedRight, Head = 1, Crab = (2, 1) };
         (int X, int Y)[] circle = [(0, 0), (2, 0), (2, 2), (0, 2)];
         int[] wobble = [-1, 0, 1, 0];
 
@@ -459,6 +466,15 @@ static class ChibiSprite
                 F(fury with { Head = 1, Fx = [(Steam, 0, 2), (Steam, 28, 2), (SmallSteam, 2, 7), (SmallSteam, 27, 7), (Anger, 23, 11)] }, 90),
                 F(fury with { Head = -1, Fx = [(SmallSteam, 0, 0), (SmallSteam, 29, 0), (Steam, 1, 6), (Steam, 27, 6), (Anger, 23, 11)] }, 90),
                 F(fury with { Head = 1, Fx = [(SmallSteam, 0, -1), (SmallSteam, 29, -1), (Steam, 1, 5), (Steam, 27, 5)] }, 90),
+            ],
+            // Al pasársele el enojo: suspira, mira de reojo a un lado y al otro buscando quién fue, y vuelve a lo suyo.
+            [ChibiMove.Calm] =
+            [
+                F(sigh with { Breathe = true, Fx = [(Steam, 0, 2), (Steam, 28, 2)] }, 450),
+                F(sigh, 450),
+                F(open with { Mouth = Mouth.Small }, 250),
+                F(lookLeft, 700), F(lookRight, 700), F(lookLeft, 350), F(lookRight, 350),
+                F(open, 250), F(open with { Eyes = Eyes.Closed }, 110), F(open, 250),
             ],
             [ChibiMove.Sleep] =
             [
@@ -783,7 +799,10 @@ sealed class ChibiDirector
     public (ChibiMove Move, long T) Now()
     {
         var now = Environment.TickCount64;
-        if (_gesture is { } g && now >= g.Until) _gesture = null;
+        if (_gesture is { } g && now >= g.Until)
+            _gesture = g.Move is ChibiMove.Pout or ChibiMove.Sulk or ChibiMove.Fury
+                ? (ChibiMove.Calm, now + ChibiSprite.Length(ChibiMove.Calm)) // se calma antes de volver a lo suyo
+                : null;
         var move = _gesture?.Move ?? _state;
         if (move != _current)
         {
