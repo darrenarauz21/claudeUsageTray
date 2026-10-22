@@ -57,6 +57,66 @@ static class ToastSprite
         DrawProps(p, kind, t, dy);
     }
 
+    /// <summary>
+    /// La mascota clásica en el escritorio, con los movimientos del chibi (ChibiDirector): los que
+    /// tienen aviso se toman de ahí (festejar, pensar, marearse, dormir, el límite renovado) y los demás
+    /// se arman con las mismas piezas. t es el tiempo desde que empezó el movimiento.
+    /// </summary>
+    public static void PaintMove(PixelFill fill, ChibiMove move, long t, Color body)
+    {
+        var kind = move switch
+        {
+            ChibiMove.Cheer => NoticeKind.Done,
+            ChibiMove.Maracas => NoticeKind.UsageReset,
+            ChibiMove.Think => NoticeKind.Question,
+            ChibiMove.Dizzy => NoticeKind.Failed,
+            ChibiMove.Sleep => NoticeKind.Closed,
+            _ => (NoticeKind?)null,
+        };
+        if (kind is { } k) { Paint(fill, k, t, body); return; }
+
+        var p = new Painter(fill);
+        var blink = t % 2800 > 2660;
+        switch (move)
+        {
+            case ChibiMove.Dance:
+            {
+                // Saltitos al compás, brazos arriba y abajo y un destello que cambia de lado.
+                var beat = (int)(t / 200 % 4);
+                var dy = beat is 1 or 3 ? -1 : 0;
+                DrawBody(p, Ox, Oy + dy, armsUp: beat < 2, body);
+                DrawFace(p, Ox, Oy + dy, Eyes.Happy, Mouth.Smile);
+                Sparkle(p, beat < 2 ? Yellow : Teal, beat < 2 ? 3 : 22, 3);
+                break;
+            }
+            case ChibiMove.Wave:
+                DrawBody(p, Ox, Oy, armsUp: t / 220 % 2 == 0, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : Eyes.Open, Mouth.Smile);
+                break;
+            case ChibiMove.Pout: // de reojo, con la boca para abajo
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, t / 600 % 2 == 0 ? Eyes.Left : Eyes.Squint, Mouth.Frown);
+                break;
+            case ChibiMove.Sulk: // «¡hmph!», con los ojos cerrados
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, Eyes.Closed, Mouth.Frown);
+                break;
+            case ChibiMove.Fury:
+            {
+                // Roja, temblando y echando llamas.
+                var dx = t / 90 % 2 == 0 ? -1 : 1;
+                DrawBody(p, Ox + dx, Oy, false, Red);
+                DrawFace(p, Ox + dx, Oy, Eyes.Squint, Mouth.Frown);
+                Flames(p, t, small: false);
+                break;
+            }
+            default: // quieta: parpadea y mira a los lados
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : (t / 1500 % 4) switch { 1 => Eyes.Left, 3 => Eyes.Right, _ => Eyes.Open }, Mouth.Neutral);
+                break;
+        }
+    }
+
     static Eyes EyesFor(NoticeKind kind, long t)
     {
         var blink = t % 2800 > 2660;

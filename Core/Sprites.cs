@@ -57,7 +57,7 @@ static class MascotSprite
 /// </summary>
 static class RefreshSprite
 {
-    public const string None = "ninguna";
+    public const string None = "ninguna", Mascot = "mascota";
     /// <summary>Estilos internos: «Mascota» con la mascota chibi, con su cabeza grande o chica. No aparecen en Ajustes.</summary>
     const string Chibi = "chibi", SmallChibi = "chibi-chico";
 
@@ -68,7 +68,7 @@ static class RefreshSprite
 
     /// <summary>El estilo que se dibuja: el elegido en Ajustes, con la mascota elegida si es «Mascota».</summary>
     public static string Resolve(string animation, string mascot) =>
-        animation == "mascota" && mascot == Mascots.Chibi ? Chibi : animation;
+        animation == Mascot && mascot == Mascots.Chibi ? Chibi : animation;
 
     /// <summary>Tamaño de la cuadrícula de cada estilo, en casillas.</summary>
     public static int Columns(string style) => style switch

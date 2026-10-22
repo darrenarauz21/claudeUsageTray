@@ -14,12 +14,17 @@ de Claude Code.
 - **Actividad:** un calendario de los últimos 6 meses con cuánto usó Claude cada día.
 - **Avisos:** un mensajito con la mascota de Claude cuando una sesión termina, le pregunta algo,
   necesita permiso o falla, y cuando está cerca del límite. Con sonido, que se puede cambiar.
-- **Apariencia:** el color de la app (el naranja de Claude u otra paleta), la animación al
-  actualizar (la mascota, el asterisco, los puntos o ninguna) y la mascota, en **Ajustes**.
+- **Apariencia:** el color de la app (el naranja de Claude u otra paleta) y la mascota que anima el
+  ícono al actualizar y sale en los avisos (la clásica, el chibi, el asterisco, los puntos o
+  ninguna), en **Ajustes**.
 - **Chibi:** una mascota más, Claude con pelo naranja y hoodie de cangrejo. Aparece en los avisos y
   al actualizar, y puede quedarse en el escritorio: baila mientras sus sesiones trabajan, piensa
   cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas cuando se renueva
-  un límite. Trae su propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en japonés.
+  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia. Trae su
+  propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en
+  japonés.
+- **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
+  el escritorio y contar los avisos en una nubecita, a su manera.
 
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.

@@ -16,13 +16,13 @@ sealed class TrayApp : ApplicationContext
     readonly ContextMenuStrip _menu = new();
     readonly ContextMenuStrip _packMenu = new();
     readonly ContextMenuStrip _paletteMenu = new();
-    readonly ContextMenuStrip _animationMenu = new();
     readonly ContextMenuStrip _mascotMenu = new();
     readonly NoticeDetector _detector = new();
     readonly ToastManager _toasts = new();
     readonly Sounds _sounds = new();
     readonly ChibiDirector _director = new();
 
+    readonly BubbleForm _bubble = new();
     MascotWindow? _mascotWindow;
     LocalTotals? _local;
     DateTime? _updated;
@@ -41,6 +41,7 @@ sealed class TrayApp : ApplicationContext
         // La ventana se creó con la paleta por defecto: toma la elegida.
         Theme.SelectedPalette = _settings.Palette;
         _form.ApplyTheme();
+        Mascots.Choose(_settings, Mascots.ChoiceOf(_settings)); // deja en orden lo guardado por versiones anteriores
         Mascots.Selected = _settings.Mascot;
         _refresh.Style = RefreshSprite.Resolve(_settings.Animation, _settings.Mascot);
 
@@ -57,11 +58,9 @@ sealed class TrayApp : ApplicationContext
             _packMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetSoundPack(id)) { Tag = id });
         foreach (var (id, label, _, _) in Theme.Palettes)
             _paletteMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetPalette(id)) { Tag = id });
-        foreach (var (id, label) in RefreshSprite.Styles)
-            _animationMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetAnimation(id)) { Tag = id });
-        foreach (var (id, label) in Mascots.All)
+        foreach (var (id, label) in Mascots.Choices)
             _mascotMenu.Items.Add(new ToolStripMenuItem(label, null, (_, _) => SetMascot(id)) { Tag = id });
-        foreach (var choices in new[] { _packMenu, _paletteMenu, _animationMenu, _mascotMenu })
+        foreach (var choices in new[] { _packMenu, _paletteMenu, _mascotMenu })
             choices.Closed += (_, _) => _form.HoldOpen = false;
         ApplyMenus();
 
@@ -95,6 +94,7 @@ sealed class TrayApp : ApplicationContext
         // Las sesiones se leen cada 1,5 s con la ventana abierta y cada 3 s cerrada, solo si hay
         // notificaciones encendidas.
         _toasts.Clicked += OpenNotice;
+        _bubble.Clicked += OpenNotice;
         _toasts.Shown += () => _noticesShown++;
         _sessionTimer.Interval = 3000;
         _sessionTimer.Tick += async (_, _) => await ScanSessionsAsync();
@@ -225,6 +225,7 @@ sealed class TrayApp : ApplicationContext
     {
         _toasts.Show(notice);
         _director.Notice(notice.Kind);
+        if (_mascotWindow is { } mascot && _settings.Speak) _bubble.Say(notice, mascot.Chibi, mascot.Bounds);
         if (_settings.Sound) _sounds.Play(notice.Kind, _settings.SoundPack);
     }
 
@@ -234,8 +235,8 @@ sealed class TrayApp : ApplicationContext
         var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
         _form.SetSettingsState(new UsageForm.SettingsState(
             _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
-            RefreshSprite.Label(_settings.Animation), Mascots.Label(_settings.Mascot),
-            Mascots.IsChibi ? _settings.DesktopMascot : null, StartupRegistration.IsEnabled, _settings.Accounts.Count));
+            Mascots.Label(Mascots.ChoiceOf(_settings)), _settings.DesktopMascot, _settings.DesktopMascot ? _settings.Speak : null,
+            StartupRegistration.IsEnabled, _settings.Accounts.Count));
     }
 
     void OnSetting(string action)
@@ -246,9 +247,9 @@ sealed class TrayApp : ApplicationContext
             case "sound": ToggleSound(); break;
             case "pack": ShowChoiceMenu(_packMenu, _settings.SoundPack); break;
             case "palette": ShowChoiceMenu(_paletteMenu, _settings.Palette); break;
-            case "anim": ShowChoiceMenu(_animationMenu, _settings.Animation); break;
-            case "mascot": ShowChoiceMenu(_mascotMenu, _settings.Mascot); break;
+            case "mascot": ShowChoiceMenu(_mascotMenu, Mascots.ChoiceOf(_settings)); break;
             case "desk": ToggleDesktopMascot(); break;
+            case "speak": ToggleSpeak(); break;
             case "startup": ToggleStartup(); break;
             case "sample": ShowNextSample(); break;
             case "sounds": OpenSoundsFolder(); break;
@@ -276,7 +277,7 @@ sealed class TrayApp : ApplicationContext
     void ApplyMenus()
     {
         var theme = _form.Theme;
-        foreach (var menu in new[] { _menu, _packMenu, _paletteMenu, _animationMenu, _mascotMenu }) Menus.Apply(menu, theme);
+        foreach (var menu in new[] { _menu, _packMenu, _paletteMenu, _mascotMenu }) Menus.Apply(menu, theme);
         _paletteMenu.ShowImageMargin = true;
         foreach (ToolStripMenuItem item in _paletteMenu.Items)
         {
@@ -295,26 +296,19 @@ sealed class TrayApp : ApplicationContext
         PushSettings();
     }
 
-    void SetAnimation(string style)
+    /// <summary>Lo elegido en «Mascota»: la mascota de los avisos y la animación al actualizar.</summary>
+    void SetMascot(string choice)
     {
-        _settings.Animation = style;
+        var wasChibi = _settings.Mascot == Mascots.Chibi;
+        Mascots.Choose(_settings, choice);
+        if (!wasChibi && _settings.Mascot == Mascots.Chibi) _settings.DesktopMascot = true; // el chibi sale al escritorio
         SettingsStore.Save(_settings);
-        _refresh.Style = RefreshSprite.Resolve(style, _settings.Mascot);
-        ClearRefreshIcons();
-        PushSettings();
-        _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
-    }
-
-    void SetMascot(string mascot)
-    {
-        _settings.Mascot = mascot;
-        SettingsStore.Save(_settings);
-        Mascots.Selected = mascot; // los avisos la leen al dibujarse
-        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, mascot);
+        Mascots.Selected = _settings.Mascot; // los avisos la leen al dibujarse
+        _refresh.Style = RefreshSprite.Resolve(_settings.Animation, _settings.Mascot);
         ClearRefreshIcons();
         PushSettings();
         UpdateMascotWindow();
-        _ = RefreshAsync(); // muestra de la mascota en la animación al actualizar
+        _ = RefreshAsync(); // muestra de la animación elegida, como la del estilo de sonido
     }
 
     void ToggleDesktopMascot()
@@ -324,20 +318,34 @@ sealed class TrayApp : ApplicationContext
         UpdateMascotWindow();
     }
 
-    /// <summary>El chibi del escritorio está si se eligió el chibi y no se ocultó.</summary>
+    void ToggleSpeak()
+    {
+        _settings.Speak = !_settings.Speak;
+        SettingsStore.Save(_settings);
+        if (!_settings.Speak) _bubble.Hide();
+    }
+
+    /// <summary>
+    /// La mascota del escritorio está si no se ocultó; si cambia de mascota (chibi o clásica), la
+    /// ventana se rehace con la nueva.
+    /// </summary>
     void UpdateMascotWindow()
     {
-        var wanted = Mascots.IsChibi && _settings.DesktopMascot;
-        if (wanted == _mascotWindow is not null) return;
-        if (!wanted)
+        var wanted = _settings.DesktopMascot;
+        if (_mascotWindow is { } current && (!wanted || current.Chibi != Mascots.IsChibi))
         {
-            _mascotWindow!.Close();
-            _mascotWindow.Dispose();
+            _bubble.Hide();
+            current.Close();
+            current.Dispose();
             _mascotWindow = null;
-            return;
         }
+        if (!wanted || _mascotWindow is not null) return;
         Point? saved = _settings.DesktopMascotX is { } x && _settings.DesktopMascotY is { } y ? new Point(x, y) : null;
-        _mascotWindow = new MascotWindow(_director, saved);
+        _mascotWindow = new MascotWindow(_director, saved, Mascots.IsChibi, () => _form.Theme.Accent);
+        _mascotWindow.LocationChanged += (_, _) =>
+        {
+            if (_bubble.Visible && _mascotWindow is { } moved) _bubble.Follow(moved.Bounds);
+        };
         _mascotWindow.OpenRequested += ShowForm;
         _mascotWindow.HideRequested += () => { ToggleDesktopMascot(); PushSettings(); };
         _mascotWindow.Moved += at =>
@@ -687,6 +695,7 @@ sealed class TrayApp : ApplicationContext
         _sessionTimer.Stop();
         _toasts.CloseAll();
         _mascotWindow?.Dispose();
+        _bubble.Dispose();
         _sounds.Dispose();
         _refresh.Dispose();
         foreach (var icon in _refreshIcons.Values) icon.Dispose();

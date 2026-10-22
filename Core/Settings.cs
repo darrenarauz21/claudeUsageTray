@@ -45,13 +45,15 @@ sealed class AppSettings
     public string SoundPack { get; set; } = "clasico";
     /// <summary>Paleta del acento (Theme.Palettes).</summary>
     public string Palette { get; set; } = "claude";
-    /// <summary>Animación al actualizar (RefreshSprite.Styles).</summary>
+    /// <summary>Animación al actualizar (RefreshSprite.Styles). Se elige junto con Mascot, en la opción «Mascota» (Mascots).</summary>
     public string Animation { get; set; } = "mascota";
-    /// <summary>Mascota de los avisos y de la animación «Mascota» (Mascots.All).</summary>
+    /// <summary>Mascota de los avisos y de la animación «mascota»: Mascots.Classic o Mascots.Chibi.</summary>
     public string Mascot { get; set; } = Mascots.Classic;
-    /// <summary>El chibi en su propia ventana sobre el escritorio (solo con la mascota chibi).</summary>
-    public bool DesktopMascot { get; set; } = true;
-    /// <summary>Dónde quedó la ventana del chibi al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
+    /// <summary>La mascota (el chibi o la clásica) en su propia ventana sobre el escritorio. Se enciende al elegir el chibi.</summary>
+    public bool DesktopMascot { get; set; }
+    /// <summary>«Hablar»: la mascota del escritorio cuenta los avisos en una nubecita, además del aviso de siempre.</summary>
+    public bool Speak { get; set; } = true;
+    /// <summary>Dónde quedó la ventana de la mascota al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
     public int? DesktopMascotX { get; set; }
     public int? DesktopMascotY { get; set; }
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>

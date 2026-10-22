@@ -728,7 +728,7 @@ sealed partial class UsageView : Control
                 else ShowSettings();
                 break;
             case HitKind.CloseSettings: OpenView(_beforeSettings); break;
-            case HitKind.Setting when hit.Key is "set:pack" or "set:palette" or "set:anim" or "set:mascot": ShowChoiceMenu(hit.Key[4..]); break;
+            case HitKind.Setting when hit.Key is "set:pack" or "set:palette" or "set:mascot": ShowChoiceMenu(hit.Key[4..]); break;
             case HitKind.Setting: SettingRequested?.Invoke(hit.Key[4..]); break;
             case HitKind.FlowSession when hit.Session is { } flow: _flowSession = flow.SessionId; Relayout(); break;
             case HitKind.FlowBack: _flowSession = null; Relayout(); break;

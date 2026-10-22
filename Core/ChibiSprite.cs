@@ -1,23 +1,39 @@
 using System.Drawing;
 namespace ClaudeUsageTray;
 
-/// <summary>La mascota elegida en Ajustes: la clásica (de un color, el acento) o el chibi.</summary>
+/// <summary>
+/// La opción «Mascota» de Ajustes, que junta la mascota y la animación al actualizar en una sola
+/// lista: con la clásica o el chibi, esa mascota anima el ícono y sale en los avisos; con Asterisco,
+/// Puntos o Ninguna, ese es el estilo al actualizar y los avisos llevan la clásica. Se guarda en
+/// Animation y Mascot del settings.json.
+/// </summary>
 static class Mascots
 {
     public const string Classic = "clasica", Chibi = "chibi";
 
-    public static readonly (string Id, string Label)[] All = [(Classic, "Clásica"), (Chibi, "Chibi")];
+    public static readonly (string Id, string Label)[] Choices =
+        [(Classic, "Clásica"), (Chibi, "Chibi"), .. RefreshSprite.Styles.Where(s => s.Id != RefreshSprite.Mascot)];
 
-    /// <summary>La elegida (Id de All), como Theme.SelectedPalette: la leen los avisos al dibujarse.</summary>
+    /// <summary>La mascota de los avisos (Classic o Chibi), como Theme.SelectedPalette: la leen al dibujarse.</summary>
     public static string Selected { get; set; } = Classic;
 
     public static bool IsChibi => Selected == Chibi;
 
-    public static string Label(string id) => All.FirstOrDefault(m => m.Id == id).Label ?? All[0].Label;
+    /// <summary>Lo elegido en la lista (Id de Choices).</summary>
+    public static string ChoiceOf(AppSettings s) => s.Animation == RefreshSprite.Mascot ? s.Mascot : s.Animation;
+
+    public static string Label(string choice) => Choices.FirstOrDefault(c => c.Id == choice).Label ?? Choices[0].Label;
+
+    /// <summary>Guarda lo elegido en Animation y Mascot. Con lo ya elegido, deja los dos valores en orden.</summary>
+    public static void Choose(AppSettings s, string choice)
+    {
+        if (!Choices.Any(c => c.Id == choice)) choice = Classic;
+        (s.Animation, s.Mascot) = choice is Classic or Chibi ? (RefreshSprite.Mascot, choice) : (choice, Classic);
+    }
 }
 
 /// <summary>Lo que hace el chibi: cada movimiento es una secuencia de cuadros que se repite.</summary>
-enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas }
+enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury }
 
 /// <summary>
 /// El chibi de Claude: pelo naranja y hoodie de cangrejo (ojitos sobre antenas), en pixeles. El
@@ -54,7 +70,11 @@ static class ChibiSprite
         ['P'] = Hex(0x8B5CF6), // notas
         ['Y'] = Hex(0xF5C542), // destellos
         ['B'] = Hex(0x4AA8F0), // signo de pregunta y zetas
-        ['M'] = Hex(0xE5484D), // maracas
+        ['M'] = Hex(0xE5484D), // maracas y 💢
+        ['F'] = Hex(0xF4877A), // piel roja de furia
+        ['f'] = Hex(0xDE5747), // piel roja de furia, sombra
+        ['G'] = Hex(0xE4DFD8), // humo
+        ['g'] = Hex(0x9E978E), // humo, borde
     };
 
     // Mitad izquierda del cuerpo, 16 × 48.
@@ -144,9 +164,9 @@ static class ChibiSprite
         "...KoOOOOoOOOOOO",
     ];
 
-    enum Arm { Down, Up, Wave, Out, Think }
-    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze }
-    enum Mouth { Smile, Open, Small, Oh, Wavy, Cat }
+    enum Arm { Down, Up, Wave, Out, Think, Angry }
+    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed }
+    enum Mouth { Smile, Open, Small, Oh, Wavy, Cat, Pout }
 
     // Brazo izquierdo en cada pose: esquina (en casillas del chibi) y filas; el derecho se espeja.
     static readonly Dictionary<Arm, (int X, int Y, string[] Rows)> Arms = new()
@@ -190,6 +210,19 @@ static class ChibiSprite
             "...KOOOK........",
             "...KOOK.........",
         ]),
+        // Furia: recto hacia abajo y afuera (los dos brazos forman una Λ), con el puño apretado.
+        [Arm.Angry] = (-4, 31,
+        [
+            "......KOOO",
+            ".....KOOOK",
+            "....KOOOK.",
+            "...KOOOK..",
+            "..KOOOK...",
+            "..KoooK...",
+            ".KSSSK....",
+            ".KSsSK....",
+            "..KKK.....",
+        ]),
         [Arm.Out] = (-4, 30,
         [
             ".KKKKKKK.",
@@ -208,6 +241,7 @@ static class ChibiSprite
         [Eyes.Up] = ["KKKK", "aKKa", "aWKa", "aaaa", "AAAA", ".AA."],
         [Eyes.Dizzy] = [".....", "KKKKK", "....K", ".KK.K", ".K..K", ".KKKK"],
         [Eyes.Squeeze] = ["....", "KK..", "..KK", "KK..", "....", "...."], // > (el derecho, espejado: <)
+        [Eyes.Annoyed] = ["....", "....", "KKKK", "KKaa", "KKAA", ".AA."], // párpado a media altura, de reojo
     };
 
     // Bocas de 4 × 2 desde la columna 14, fila 25.
@@ -217,6 +251,7 @@ static class ChibiSprite
         [Mouth.Small] = ["....", ".mm."],
         [Mouth.Oh] = [".mm.", ".mm."], // entreabierta, al pensar
         [Mouth.Cat] = ["m.mm.m", ".m..m."], // :3, de 6 de ancho desde la columna 13
+        [Mouth.Pout] = [".mm.", "m..m"], // puchero
         [Mouth.Wavy] = ["m.m.", ".m.m"],
     };
 
@@ -227,6 +262,20 @@ static class ChibiSprite
     static readonly string[] Z = ["BBBB", "..B.", ".B..", "BBBB"];
     static readonly string[] SmallZ = ["BBB", ".B.", "BBB"];
     static readonly string[] Maraca = [".KKK.", "KMMMK", "KYYYK", "KMMMK", ".KMK.", "..K..", "..K.."];
+    static readonly string[] Steam = [".gg.", "gGGg", "gGGg", ".gg."];
+    static readonly string[] SmallSteam = [".g.", "gGg", ".g."];
+    static readonly string[] Anger = [".M.M.", "MM.MM", ".....", "MM.MM", ".M.M."]; // 💢
+
+    // Brazos cruzados (mitad izquierda, se espeja): una banda sobre el pecho con los codos afuera.
+    static readonly string[] Cross =
+    [
+        "...KKKKKKKKKKKKK",
+        "..KOOOOOOOOOOOoK",
+        "..KOOOOOOOOOOOoK",
+        "..KooooooooooooK",
+        "...KKKKKKKKKKKKK",
+    ];
+    const int CrossTop = 30;
 
     // Dónde va la maraca (esquina, en casillas del chibi) con la mano en cada pose: el mango toca la mano.
     static readonly Dictionary<(Arm Arm, bool Left), (int X, int Y)> MaracaAt = new()
@@ -266,6 +315,12 @@ static class ChibiSprite
         public (string[] Shape, int X, int Y)[] Fx { get; init; } = [];
         /// <summary>Maracas en las manos levantadas o abiertas; cada número es cuánto sube esa maraca al sacudirse.</summary>
         public (int Left, int Right)? Maracas { get; init; }
+        /// <summary>Cachetes inflados (puchero).</summary>
+        public bool Cheeks { get; init; }
+        /// <summary>Brazos cruzados sobre el pecho (quita los dos brazos).</summary>
+        public bool Folded { get; init; }
+        /// <summary>La cara roja de furia.</summary>
+        public bool Red { get; init; }
     }
 
     sealed record Frame(char[][] Grid, int Ms);
@@ -339,6 +394,9 @@ static class ChibiSprite
         var think = new Pose { Eyes = Eyes.Up, Mouth = Mouth.Oh, Crab = (1, 0), Left = Arm.Think };
         var cha = new Pose { Eyes = Eyes.Happy, Crab = (1, 0), Left = Arm.Up, Right = Arm.Up };
         var sleep = new Pose { Eyes = Eyes.Sleep, Mouth = Mouth.Small, Crab = null };
+        var pout = new Pose { Eyes = Eyes.Annoyed, Mouth = Mouth.Pout, Head = -1, Cheeks = true, Crab = (0, 1) };
+        var sulk = new Pose { Eyes = Eyes.Closed, Mouth = Mouth.Pout, Head = 1, Cheeks = true, Folded = true, Crab = (2, 1) };
+        var fury = new Pose { Eyes = Eyes.Squeeze, Mouth = Mouth.Pout, Cheeks = true, Left = Arm.Angry, Right = Arm.Angry, Red = true, Crab = (1, 2) };
         (int X, int Y)[] circle = [(0, 0), (2, 0), (2, 2), (0, 2)];
         int[] wobble = [-1, 0, 1, 0];
 
@@ -384,6 +442,24 @@ static class ChibiSprite
                 F(cha with { Maracas = (0, 0) }, 150),
                 F(cha with { Eyes = Eyes.Squeeze, Mouth = Mouth.Open, Dy = -1, Maracas = (1, 1), Fx = [(Spark, -3, 12), (Spark, 34, 12)] }, 300),
             ],
+            // De tanto molestarlo a clics: puchero, brazos cruzados y furia.
+            [ChibiMove.Pout] =
+            [
+                F(pout, 450), F(pout with { Dy = -1 }, 150), F(pout with { Crab = (0, 2) }, 450), F(pout with { Eyes = Eyes.Closed }, 150),
+            ],
+            [ChibiMove.Sulk] =
+            [
+                F(sulk, 700), F(sulk with { Eyes = Eyes.Annoyed }, 500), F(sulk with { Dy = -1 }, 150), F(sulk, 500),
+            ],
+            [ChibiMove.Fury] =
+            [
+                F(fury with { Head = -1, Fx = [(Steam, 1, 6), (Steam, 27, 6), (Anger, 23, 11)] }, 90),
+                F(fury with { Head = 1, Fx = [(Steam, 1, 5), (Steam, 27, 5), (Anger, 23, 11)] }, 90),
+                F(fury with { Head = -1, Fx = [(Steam, 0, 3), (Steam, 28, 3), (SmallSteam, 2, 7), (SmallSteam, 27, 7)] }, 90),
+                F(fury with { Head = 1, Fx = [(Steam, 0, 2), (Steam, 28, 2), (SmallSteam, 2, 7), (SmallSteam, 27, 7), (Anger, 23, 11)] }, 90),
+                F(fury with { Head = -1, Fx = [(SmallSteam, 0, 0), (SmallSteam, 29, 0), (Steam, 1, 6), (Steam, 27, 6), (Anger, 23, 11)] }, 90),
+                F(fury with { Head = 1, Fx = [(SmallSteam, 0, -1), (SmallSteam, 29, -1), (Steam, 1, 5), (Steam, 27, 5)] }, 90),
+            ],
             [ChibiMove.Sleep] =
             [
                 F(sleep with { Fx = [(SmallZ, 27, 6)] }, 450),
@@ -413,9 +489,15 @@ static class ChibiSprite
         SetEyes(g, pose.Eyes);
         SetMouth(g, pose.Mouth);
         SetCrab(g, pose.Crab);
+        if (pose.Cheeks) PuffCheeks(g);
         ShiftHead(g, pose.Head);
-        if (pose.Left != Arm.Down) RemoveArm(g, left: true);
-        if (pose.Right != Arm.Down) RemoveArm(g, left: false);
+        if (pose.Left != Arm.Down || pose.Folded) RemoveArm(g, left: true);
+        if (pose.Right != Arm.Down || pose.Folded) RemoveArm(g, left: false);
+        if (pose.Folded) FoldArms(g);
+        if (pose.Red)
+            for (var y = 14; y < 29; y++)
+                for (var x = 5; x < 27; x++)
+                    g[y][x] = g[y][x] switch { 'S' => 'F', 's' or 'b' => 'f', var ch => ch };
         if (pose.Breathe) Squash(g);
 
         var canvas = Blank(Columns, Rows);
@@ -464,6 +546,33 @@ static class ChibiSprite
         if (eyes == Eyes.Up) // el rabillo de las pestañas
             for (var y = 19; y <= 20; y++)
                 g[y][8] = g[y][23] = 'K';
+    }
+
+    /// <summary>Cachetes inflados: más rubor y la cara una casilla más ancha a cada lado.</summary>
+    static void PuffCheeks(char[][] g)
+    {
+        Stamp(g, 7, 25, ["Sbbb", "Sbbb"]);
+        Stamp(g, 21, 25, ["bbbS", "bbbS"]);
+        for (var y = 25; y <= 26; y++) g[y][6] = g[y][25] = 'K';
+    }
+
+    /// <summary>
+    /// Brazos cruzados a la altura del pecho: el de arriba (izquierdo) en naranja con brillo y el de
+    /// abajo en sombra, separados por una diagonal; cada mano toma el brazo contrario.
+    /// </summary>
+    static void FoldArms(char[][] g)
+    {
+        Stamp(g, 0, CrossTop, [.. Cross.Select(row => row + Reverse(row))]);
+        for (var y = CrossTop + 1; y < CrossTop + 4; y++)
+        {
+            var seam = 14 + (y - CrossTop - 1);
+            for (var x = 3; x < 29; x++)
+                if (g[y][x] is 'O' or 'o')
+                    g[y][x] = x >= seam ? 'o' : y == CrossTop + 1 && x > 5 && x < seam - 1 ? 'h' : 'O';
+            g[y][seam] = 'K';
+        }
+        Stamp(g, 2, CrossTop + 1, ["KSSKo", "KsSKo", ".KK.."]);
+        Stamp(g, 25, CrossTop + 1, ["..KK.", "oKSSK", "oKSsK"]);
     }
 
     static void SetMouth(char[][] g, Mouth mouth)
@@ -640,15 +749,34 @@ sealed class ChibiDirector
             : ChibiMove.Sleep;
     }
 
+    int _pokes;
+    long _lastPoke;
+
     /// <summary>Un gesto por unos segundos, encima de lo que esté haciendo.</summary>
     public void Gesture(ChibiMove move, int ms = 2500) => _gesture = (move, Environment.TickCount64 + ms);
 
-    /// <summary>Al llegar un aviso: festeja lo que terminó, baila chachachá si se renovó un límite y se marea con lo que falló.</summary>
+    /// <summary>
+    /// Un clic encima: saluda. Si lo siguen molestando (clics con menos de 4 s entre uno y otro), hace
+    /// puchero (3 a 5), cruza los brazos (6 a 8) y se pone rojo de furia (9 o más).
+    /// </summary>
+    public void Poke()
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastPoke > 4000) _pokes = 0;
+        _lastPoke = now;
+        _pokes++;
+        var move = _pokes switch { <= 2 => ChibiMove.Wave, <= 5 => ChibiMove.Pout, <= 8 => ChibiMove.Sulk, _ => ChibiMove.Fury };
+        Gesture(move, move == ChibiMove.Wave ? 2500 : 4000);
+    }
+
+    /// <summary>
+    /// Al llegar un aviso hace el mismo gesto que el aviso (festeja, piensa, se marea, duerme, baila
+    /// chachachá) por unos segundos y después vuelve a lo que corresponda.
+    /// </summary>
     public void Notice(NoticeKind kind)
     {
         var move = ChibiSprite.ForNotice(kind);
-        if (move is ChibiMove.Cheer or ChibiMove.Dizzy) Gesture(move, 3000);
-        else if (move == ChibiMove.Maracas) Gesture(move, 3600); // tres vueltas de chachachá
+        Gesture(move, move == ChibiMove.Maracas ? 3600 : 3000); // el chachachá, tres vueltas
     }
 
     /// <summary>El movimiento de ahora y cuánto lleva (ms), para ChibiSprite.Paint.</summary>
@@ -663,5 +791,74 @@ sealed class ChibiDirector
             _since = now;
         }
         return (move, now - _since);
+    }
+}
+
+/// <summary>
+/// Lo que dice la mascota del escritorio en su nubecita (opción «Hablar»): el mismo aviso, contado
+/// a su manera, de tú y con caritas. El chibi llama con «¡Oi!» cuando algo espera respuesta.
+/// </summary>
+static class MascotLines
+{
+    public static string For(Notice notice, bool chibi)
+    {
+        var s = Short(notice.Subtitle);
+        var oi = chibi ? "¡Oi! " : "";
+        var title = notice.Title.Length > 0 ? char.ToLower(notice.Title[0]) + notice.Title[1..] : "";
+        return notice.Kind switch
+        {
+            NoticeKind.Done => $"¡Listo! «{s}» ya terminó \\(^o^)/",
+            NoticeKind.Question => $"{oi}Psst… «{s}» quiere preguntarte algo (o_o)?",
+            NoticeKind.Permission => $"{oi}¡Toc, toc! «{s}» necesita tu permiso para seguir.",
+            NoticeKind.Failed => $"¡Uwaaa! «{s}» se tropezó… (T_T)",
+            NoticeKind.Retrying => $"«{s}» lo intenta otra vez. ¡Tú puedes! (>_<)",
+            NoticeKind.Closed => $"Ay… «{s}» se cerró a medio camino. (-_-) zzz",
+            NoticeKind.UsageHigh => $"{oi}Ojo: {title} ({s}). ¡Con calma! (°o°;)",
+            NoticeKind.UsageCritical => $"¡Casi sin energía! {notice.Title} ({s}). (×_×)",
+            NoticeKind.UsageReset => $"¡Chachachá! Se renovó: {s}. ¡A darle! ♪",
+            NoticeKind.Expired => $"Hmm… la cuenta «{s}» pide que abras Claude Code otra vez. (._.)",
+            _ => notice.Title,
+        };
+    }
+
+    static string Short(string text) => text.Length <= 42 ? text : text[..41].TrimEnd() + "…";
+}
+
+/// <summary>
+/// La nubecita de diálogo en pixeles: contorno oscuro, relleno blanco, esquinas en escalón y una
+/// colita que apunta a la mascota (abajo o arriba). Mide Width × Height casillas, colita incluida.
+/// </summary>
+static class BubbleSprite
+{
+    public const int Tail = 3; // alto de la colita, en casillas
+    static readonly Color Ink = Color.FromArgb(0x2A, 0x1F, 0x1A);
+    static readonly Color Paper = Color.FromArgb(0xFF, 0xFF, 0xFF);
+
+    /// <summary>tailX: columna de la punta de la colita; tailDown: la colita sale por abajo (si no, por arriba).</summary>
+    public static void Paint(PixelFill fill, int width, int height, int tailX, bool tailDown)
+    {
+        var top = tailDown ? 0 : Tail;
+        var h = height - Tail; // alto del cuerpo de la nube
+        // Cuerpo: relleno con esquinas recortadas en escalón y contorno de una casilla.
+        fill(Ink, 2, top, width - 4, 1);
+        fill(Ink, 2, top + h - 1, width - 4, 1);
+        fill(Ink, 0, top + 2, 1, h - 4);
+        fill(Ink, width - 1, top + 2, 1, h - 4);
+        fill(Ink, 1, top + 1, 1, 1); fill(Ink, width - 2, top + 1, 1, 1);
+        fill(Ink, 1, top + h - 2, 1, 1); fill(Ink, width - 2, top + h - 2, 1, 1);
+        fill(Paper, 2, top + 1, width - 4, h - 2);
+        fill(Paper, 1, top + 2, width - 2, h - 4);
+
+        // Colita: un triángulo que se angosta hacia la mascota.
+        tailX = Math.Clamp(tailX, 3, width - 4);
+        for (var i = 0; i < Tail; i++)
+        {
+            var y = tailDown ? top + h - 1 + i : top - i;
+            var half = Tail - 1 - i;
+            fill(Paper, tailX - half, y, half * 2 + 1, 1);
+            fill(Ink, tailX - half - 1, y, 1, 1);
+            fill(Ink, tailX + half + 1, y, 1, 1);
+        }
+        fill(Ink, tailX, tailDown ? top + h - 1 + Tail : top - Tail, 1, 1);
     }
 }

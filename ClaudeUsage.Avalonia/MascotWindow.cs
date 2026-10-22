@@ -7,13 +7,12 @@ using Avalonia.Threading;
 namespace ClaudeUsageTray;
 
 /// <summary>
-/// El chibi sobre el escritorio, sin marco ni fondo y siempre encima (igual que en Windows). Hace
-/// lo que diga ChibiDirector; se arrastra para cambiarlo de lugar, un clic lo hace saludar y el
-/// clic derecho abre su menú.
+/// La mascota sobre el escritorio (el chibi o la clásica), sin marco ni fondo y siempre encima (igual
+/// que en Windows). Hace lo que diga ChibiDirector; se arrastra para cambiarla de lugar (sin salirse
+/// de la pantalla), un clic la hace saludar (y muchos, enojarse) y el clic derecho abre su menú.
 /// </summary>
 sealed class MascotWindow : Window
 {
-    const double Unit = 3;
 
     public event Action? OpenRequested;
     public event Action? HideRequested;
@@ -28,9 +27,16 @@ sealed class MascotWindow : Window
     PixelPoint _startPosition;
     bool _dragging;
 
-    public MascotWindow(ChibiDirector director, PixelPoint? saved)
+    /// <summary>El chibi (true) o la clásica, que se pinta con el acento de la paleta.</summary>
+    public bool Chibi { get; }
+
+    /// <summary>Dónde está en la pantalla, en pixeles (para la nubecita).</summary>
+    public PixelRect ScreenBounds => new(Position, PixelSize.FromSize(Bounds.Size, RenderScaling));
+
+    public MascotWindow(ChibiDirector director, PixelPoint? saved, bool chibi, Func<System.Drawing.Color> accent)
     {
         _director = director;
+        Chibi = chibi;
         _saved = saved;
         Title = "Uso de Claude";
         SystemDecorations = SystemDecorations.None;
@@ -40,9 +46,10 @@ sealed class MascotWindow : Window
         Topmost = true;
         Background = Brushes.Transparent;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
-        Width = ChibiSprite.Columns * Unit;
-        Height = ChibiSprite.Rows * Unit;
-        _view = new MascotView(director) { Cursor = new Cursor(StandardCursorType.Hand) };
+        var unit = chibi ? 3 : 4;
+        Width = (chibi ? ChibiSprite.Columns : ToastSprite.Columns) * unit;
+        Height = (chibi ? ChibiSprite.Rows : ToastSprite.Rows) * unit;
+        _view = new MascotView(director, chibi, unit, accent) { Cursor = new Cursor(StandardCursorType.Hand) };
         Content = _view;
 
         var menu = new ContextMenu();
@@ -58,11 +65,23 @@ sealed class MascotWindow : Window
         _timer.Tick += (_, _) => _view.Tick();
         Opened += (_, _) =>
         {
-            Position = _saved is { } p && Screens.All.Any(s => s.WorkingArea.Contains(p)) ? p : DefaultPosition();
+            Position = Fit(_saved ?? DefaultPosition());
             _director.Gesture(ChibiMove.Wave); // saluda al aparecer
             _timer.Start();
         };
         Closed += (_, _) => _timer.Stop();
+    }
+
+    /// <summary>La posición más cercana con la ventana entera dentro de la pantalla en que cae: nunca se pierde por un borde.</summary>
+    PixelPoint Fit(PixelPoint at)
+    {
+        var screen = Screens.ScreenFromPoint(at) ?? Placement.PrimaryScreen(this);
+        var area = screen?.WorkingArea ?? new PixelRect(0, 0, 1280, 800);
+        var scale = screen?.Scaling ?? 1;
+        var width = (int)Math.Ceiling(Width * scale);
+        var height = (int)Math.Ceiling(Height * scale);
+        return new PixelPoint(Math.Clamp(at.X, area.X, Math.Max(area.X, area.Right - width)),
+            Math.Clamp(at.Y, area.Y, Math.Max(area.Y, area.Bottom - height)));
     }
 
     /// <summary>Abajo a la derecha, a la izquierda de donde salen los avisos.</summary>
@@ -93,7 +112,7 @@ sealed class MascotWindow : Window
         var (dx, dy) = (now.X - press.X, now.Y - press.Y);
         if (!_dragging && Math.Abs(dx) + Math.Abs(dy) < 4 * RenderScaling) return;
         _dragging = true;
-        Position = new PixelPoint(_startPosition.X + dx, _startPosition.Y + dy);
+        Position = Fit(new PixelPoint(_startPosition.X + dx, _startPosition.Y + dy));
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -102,18 +121,18 @@ sealed class MascotWindow : Window
         if (e.InitialPressMouseButton != MouseButton.Left || _pressAt is null) return;
         _pressAt = null;
         if (_dragging) Moved?.Invoke(Position);
-        else _director.Gesture(ChibiMove.Wave);
+        else _director.Poke(); // saluda; si lo siguen molestando, se enoja
     }
 
-    sealed class MascotView(ChibiDirector director) : Control
+    sealed class MascotView(ChibiDirector director, bool chibi, double unit, Func<System.Drawing.Color> accent) : Control
     {
         (ChibiMove Move, int Frame) _shown = (ChibiMove.Sleep, -1);
 
-        /// <summary>Repinta solo cuando cambia el cuadro.</summary>
+        /// <summary>Repinta solo cuando cambia el cuadro (la clásica se anima con el tiempo: cada vuelta del reloj).</summary>
         public void Tick()
         {
             var (move, t) = director.Now();
-            var shown = (move, ChibiSprite.FrameIndex(move, t));
+            var shown = (move, chibi ? ChibiSprite.FrameIndex(move, t) : (int)(t / 40));
             if (shown == _shown) return;
             _shown = shown;
             InvalidateVisual();
@@ -122,7 +141,8 @@ sealed class MascotWindow : Window
         public override void Render(DrawingContext dc)
         {
             var (move, t) = director.Now();
-            Gfx.Pixels(dc, 0, 0, Unit, fill => ChibiSprite.Paint(fill, move, t));
+            if (chibi) Gfx.Pixels(dc, 0, 0, unit, fill => ChibiSprite.Paint(fill, move, t));
+            else Gfx.Pixels(dc, 0, 0, unit, fill => ToastSprite.PaintMove(fill, move, t, accent()));
         }
     }
 }

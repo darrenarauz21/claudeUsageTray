@@ -36,8 +36,8 @@ caracteres del SHA-256 de la ruta para cada `CLAUDE_CONFIG_DIR`. La app las lee 
 
 Un botón por cuenta y, para la elegida, la sesión (5 h), la semana y la semana por modelo, con su
 barra y cuándo reinicia. Al pie, los tokens de hoy en este equipo. Al actualizar (a mano o cada
-5 minutos), la animación elegida en **Ajustes › Apariencia** ocupa el ícono y la hora del pie. La
-de siempre es la mascota: abre los ojos, mira a los lados mientras llega la respuesta y hace `> <`
+5 minutos), la animación de lo elegido en **Ajustes › Apariencia › Mascota** ocupa el ícono y la
+hora del pie. La de siempre es la mascota clásica: abre los ojos, mira a los lados mientras llega la respuesta y hace `> <`
 antes de mostrar el estado nuevo. Con la mascota chibi, lo mismo lo hace su cabeza, que termina con
 `> <` y boca de gatito (`:3`).
 
@@ -51,16 +51,20 @@ muestra al elegir.
   el acento: barras, interruptores, enlaces, el número del ícono y la mascota del ícono, del pie y
   de los avisos. Fondos, textos y colores de estado (peligro, aviso, éxito) no cambian. Están en
   `Theme.Palettes` (`Core/Theme.cs`).
-- **Animación al actualizar:** Mascota, Asterisco (el ✻ de Claude Code, que crece y se encoge),
-  Puntos (una ola que termina en sonrisa) o Ninguna (el ícono sigue con el porcentaje y el pie dice
-  «Actualizando…»). Todas usan la misma cuadrícula de 14 × 10 y los mismos tiempos de
-  `RefreshAnimator`; los dibujos están en `RefreshSprite` (`Core/Sprites.cs`). Al elegir una, la app
-  actualiza para mostrarla.
-- **Mascota:** Clásica (de un color, el acento) o Chibi (ver abajo). Cambia la de los avisos y la
-  de la animación «Mascota».
-- **Chibi en el escritorio:** solo con la mascota chibi; encendido de entrada.
+- **Mascota:** junta la mascota y la animación al actualizar en una sola lista (`Mascots`, en
+  `Core/ChibiSprite.cs`). Clásica (de un color, el acento) o Chibi (ver abajo): esa mascota anima el
+  ícono y sale en los avisos. Asterisco (el ✻ de Claude Code, que crece y se encoge), Puntos (una ola
+  que termina en sonrisa) o Ninguna (el ícono sigue con el porcentaje y el pie dice «Actualizando…»):
+  ese es el estilo al actualizar y los avisos llevan la clásica. Todos usan los mismos tiempos de
+  `RefreshAnimator`; los dibujos están en `RefreshSprite` (`Core/Sprites.cs`). Al elegir uno, la app
+  actualiza para mostrarlo.
+- **Mascota en el escritorio:** la mascota (el chibi o la clásica) en su propia ventana; se enciende
+  sola al elegir el chibi.
+- **Hablar:** con la mascota en el escritorio, cuenta cada aviso en una nubecita, a su manera
+  (`MascotLines`: de tú y con caritas), además del aviso de siempre.
 
-Se guardan en `Palette`, `Animation`, `Mascot` y `DesktopMascot` del `settings.json` de la app.
+Se guardan en `Palette`, `Animation` (el estilo al actualizar), `Mascot` (la de los avisos),
+`DesktopMascot` y `Speak` del `settings.json` de la app.
 
 ## Chibi
 
@@ -81,12 +85,22 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Chachachá con maracas | se renovó un límite (sesión o semana) |
 | Mareada | falló; uso crítico |
 | Saludar | al aparecer y con un clic |
+| Puchero | 3 a 5 clics seguidos |
+| Brazos cruzados («¡hmph!») | 6 a 8 clics seguidos |
+| Furia (roja, brazos en Λ, humo y 💢) | 9 clics seguidos o más; se le pasa a los 4 s sin clics |
+
+Con un aviso, la mascota del escritorio hace el mismo gesto del aviso unos segundos y después vuelve
+a lo que corresponda.
 
 En los avisos asoma desde abajo (de la cabeza al ruedo). En el escritorio vive en una ventana sin
-marco ni fondo, siempre encima, que no quita el foco: se arrastra para moverla (la posición queda en
-`DesktopMascotX` y `DesktopMascotY`) y el clic derecho la abre o la oculta. `ChibiDirector` decide
-qué hace según las sesiones, que la app sigue leyendo mientras el chibi esté a la vista aunque las
-notificaciones estén apagadas.
+marco ni fondo, siempre encima, que no quita el foco: se arrastra para moverla, sin salirse de la
+pantalla (la posición queda en `DesktopMascotX` y `DesktopMascotY`), y el clic derecho la abre o la
+oculta. `ChibiDirector` decide qué hace según las sesiones, que la app sigue leyendo mientras la
+mascota esté a la vista aunque las notificaciones estén apagadas. La mascota clásica también puede
+estar en el escritorio, con los mismos movimientos armados con sus dibujos de los avisos
+(`ToastSprite.PaintMove`). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
+mascota (o abajo, si no cabe), la sigue al arrastrarla y se va a los 8 s; un clic abre lo mismo que
+el aviso.
 
 ## Sesiones
 
