@@ -75,8 +75,12 @@ sealed class AppSettings
     public bool AnalyzeDrops { get; set; } = true;
     /// <summary>Hablarle con el micrófono (mantener MicKey).</summary>
     public bool Mic { get; set; }
-    /// <summary>La tecla que se mantiene para hablar (nombre de System.Windows.Forms.Keys).</summary>
+    /// <summary>La tecla para hablar: una que se mantiene (nombre de System.Windows.Forms.Keys) o una combinación grabada (MicKeys).</summary>
     public string MicKey { get; set; } = "RControlKey";
+    /// <summary>El atajo que abre el chat (KeyNames: «Ctrl+Alt+Space»).</summary>
+    public string ChatKey { get; set; } = KeyNames.DefaultChat;
+    /// <summary>La tecla Copilot (Win+Mayús+F23) abre el chat y escucha, en vez de abrir Copilot.</summary>
+    public bool CopilotKey { get; set; } = true;
     /// <summary>Leer las respuestas en voz alta con una voz del sistema.</summary>
     public bool ReadAloud { get; set; }
 

@@ -327,13 +327,17 @@ sealed class Transcriber : IDisposable
         {
             return await Task.Run(async () =>
             {
-                using var processor = Factory().CreateBuilder()
+                var padded = Padded(pcm);
+                // await using: si se cancela a mitad (un trozo parcial, al soltar la tecla), Dispose fallaría
+                // mientras Whisper todavía procesa; DisposeAsync espera a que termine.
+                await using var processor = Factory().CreateBuilder()
                     .WithLanguage("es")
                     .WithPrompt(Prompt)
                     .WithThreads(Threads)
                     .WithNoSpeechThreshold(0.6f)
+                    .WithAudioContextSize(AudioContext(padded.Length))
                     .Build();
-                using var wav = Wav(Padded(pcm));
+                using var wav = Wav(padded);
                 var text = new StringBuilder();
                 await foreach (var segment in processor.ProcessAsync(wav, cancel))
                     if (segment.NoSpeechProbability < 0.6f) text.Append(segment.Text);
@@ -367,6 +371,12 @@ sealed class Transcriber : IDisposable
         pcm.CopyTo(padded, 0);
         return padded;
     }
+
+    /// <summary>
+    /// La ventana del codificador, del largo de lo dicho (50 por segundo, más un margen) en vez de los 30 s de
+    /// siempre: una frase de 3 s pasa de unos 5 s a menos de 1 s, y acierta igual (medido con 4 frases).
+    /// </summary>
+    static int AudioContext(int samples) => Math.Min(1500, samples * 50 / 16000 + 64);
 
     /// <summary>Sin [Música], (risas), frases fantasma ni espacios de más.</summary>
     static string Clean(string text)
@@ -407,7 +417,9 @@ sealed class Transcriber : IDisposable
 /// se queda con ninguna tecla. Mantenerla un cuarto de segundo empieza (Began) y soltarla termina
 /// (Ended). Si mientras tanto se aprieta otra tecla, era un atajo: se cancela. Dos toques rápidos dejan
 /// el micrófono abierto hasta el toque siguiente. Esc cancela. Los avisos salen después, en el hilo de
-/// la interfaz: el gancho tiene que volver enseguida o Windows lo quita.
+/// la interfaz: el gancho tiene que volver enseguida o Windows lo quita. Una combinación grabada o la
+/// tecla Copilot (las vigila KeyHook, que avisa con ComboDown y ComboUp) no se usa para otra cosa: con
+/// un solo toque ya escucha sin mantenerla, y el toque siguiente envía.
 /// </summary>
 sealed class PushToTalk : IDisposable
 {
@@ -418,7 +430,7 @@ sealed class PushToTalk : IDisposable
     readonly System.Windows.Forms.Timer _hold = new() { Interval = HoldMs };
     readonly SynchronizationContext? _ui = SynchronizationContext.Current;
     IntPtr _hook;
-    bool _down, _other, _active, _handsFree;
+    bool _down, _other, _active, _handsFree, _comboDown, _comboSent;
     long _downAt, _lastTap;
 
     public Keys Key { get; set; } = Keys.RControlKey;
@@ -451,8 +463,29 @@ sealed class PushToTalk : IDisposable
         _hold.Tick += (_, _) =>
         {
             _hold.Stop();
-            if (_down && !_other && !_active) Start(handsFree: false);
+            if ((_down && !_other || _comboDown) && !_active) Start(handsFree: false);
         };
+    }
+
+    /// <summary>Bajó la combinación: si ya escuchaba sin mantener, este toque envía; si no, se ve si la mantiene.</summary>
+    public void ComboDown()
+    {
+        if (_comboDown) return;
+        _comboDown = true;
+        _comboSent = _active && _handsFree;
+        if (_comboSent) Finish();
+        else if (!_active) _hold.Start();
+    }
+
+    /// <summary>Subió: si la mantuvo, envía; si fue un toque, escucha hasta el toque siguiente (o una pausa).</summary>
+    public void ComboUp()
+    {
+        if (!_comboDown) return;
+        _comboDown = false;
+        _hold.Stop();
+        if (_comboSent) return;
+        if (_active && !_handsFree) { _active = false; Raise(Ended); }
+        else if (!_active) Start(handsFree: true);
     }
 
     void Start(bool handsFree)
@@ -567,6 +600,9 @@ sealed class VoiceInput : IDisposable
 
     const int MinSamples = 16000 * 4 / 10;  // menos de 0,4 s: fue un toque, no se habló
     const int PartialStep = 16000 * 7 / 10; // otro trozo cuando hay 0,7 s nuevos
+    // Sin mantener la tecla, también se envía al callar (PauseMs después de hablar) o si no se dice nada en WaitMs.
+    const float SpeechLevel = 350f / 6000;  // el umbral de Transcriber, en la escala de Microphone.Level
+    const int PauseMs = 1800, WaitMs = 8000;
     readonly PushToTalk _key = new();
     readonly Microphone _mic = new();
     readonly System.Windows.Forms.Timer _partialTimer = new() { Interval = 400 };
@@ -575,14 +611,22 @@ sealed class VoiceInput : IDisposable
     CancellationTokenSource? _partialCancel;
     Task? _partial;
     int _partialSamples, _take;
-    bool _buttonPending, _byButton;
+    bool _buttonPending, _byButton, _spoke;
+    long _listenAt, _voiceAt;
 
     public VoiceInput()
     {
         _key.Began += Begin;
         _key.Ended += () => _ = EndAsync();
         _key.Canceled += Cancel;
-        _mic.Level += level => Level?.Invoke(level);
+        _mic.Level += level =>
+        {
+            Level?.Invoke(level);
+            if (!_key.HandsFree || !_mic.Recording) return;
+            var now = Environment.TickCount64;
+            if (level > SpeechLevel) { _spoke = true; _voiceAt = now; }
+            else if (_spoke ? now - _voiceAt > PauseMs : now - _listenAt > WaitMs) _key.Finish();
+        };
         _partialTimer.Tick += (_, _) => MaybePartial();
         _idle.Tick += (_, _) =>
         {
@@ -595,13 +639,18 @@ sealed class VoiceInput : IDisposable
 
     public Keys Key { get => _key.Key; set => _key.Key = value; }
 
+    /// <summary>Una combinación grabada o la tecla Copilot (KeyHook): un toque escucha sin mantenerla; mantenerla, hasta soltarla.</summary>
+    public void ComboDown() => _key.ComboDown();
+
+    public void ComboUp() => _key.ComboUp();
+
     public bool Listening => _mic.Recording;
 
     Transcriber Transcriber => _transcriber ??= new Transcriber();
 
     /// <summary>Cómo se termina, para mostrarlo mientras escucha.</summary>
     public string Hint(string keyLabel) =>
-        _byButton ? "Clic en el micrófono para enviar" : _key.HandsFree ? $"Toque {keyLabel} para enviar" : $"Suelte {keyLabel}";
+        _byButton ? "Envía al callar o con el micrófono" : _key.HandsFree ? $"Envía al callar o con {keyLabel}" : $"Suelte {keyLabel}";
 
     /// <summary>El botón del micrófono: empieza a escuchar (sin mantener la tecla) o termina y envía.</summary>
     public void Toggle()
@@ -629,6 +678,8 @@ sealed class VoiceInput : IDisposable
         }
         _take++;
         _partialSamples = 0;
+        _spoke = false;
+        _listenAt = Environment.TickCount64;
         _idle.Stop();
         _partialTimer.Start();
         _ = Transcriber.WarmAsync().ContinueWith(t => ErrorLog.Write(t.Exception!), TaskContinuationOptions.OnlyOnFaulted);

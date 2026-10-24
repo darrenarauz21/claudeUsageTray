@@ -23,13 +23,46 @@ static class AssistantModels
 
 }
 
-/// <summary>La tecla que se mantiene para hablar: nombres de System.Windows.Forms.Keys (y sus equivalentes en Linux y macOS).</summary>
+/// <summary>
+/// La tecla para hablar: una de estas, que se mantiene (nombres de System.Windows.Forms.Keys), o una tecla o
+/// combinación grabada en Ajustes («Win+Shift+F23»), que también se toca una vez para hablar sin mantenerla.
+/// </summary>
 static class MicKeys
 {
     public static readonly (string Id, string Label)[] Choices =
         [("RControlKey", "Ctrl derecho"), ("RMenu", "Alt derecho"), ("RShiftKey", "Mayús derecha")];
 
-    public static string Label(string id) => Choices.FirstOrDefault(c => c.Id == id).Label ?? Choices[0].Label;
+    /// <summary>Es una de las de mantener (si no, una grabada).</summary>
+    public static bool IsHold(string id) => Choices.Any(c => c.Id == id);
+
+    public static string Label(string id) =>
+        Choices.FirstOrDefault(c => c.Id == id).Label ?? (id.Length > 0 ? KeyNames.Label(id) : Choices[0].Label);
+}
+
+/// <summary>Una combinación guardada como texto («Ctrl+Alt+Space», nombres de Keys), dicha como se ve en el teclado.</summary>
+static class KeyNames
+{
+    public const string Copilot = "Win+Shift+F23";
+    public const string DefaultChat = "Ctrl+Alt+Space";
+
+    static readonly Dictionary<string, string> Spanish = new()
+    {
+        ["Shift"] = "Mayús", ["Space"] = "Espacio", ["Return"] = "Intro", ["Enter"] = "Intro", ["Escape"] = "Esc",
+        ["Back"] = "Retroceso", ["Apps"] = "Menú", ["Prior"] = "RePág", ["PageUp"] = "RePág", ["Next"] = "AvPág",
+        ["PageDown"] = "AvPág", ["Home"] = "Inicio", ["End"] = "Fin", ["Capital"] = "Bloq Mayús",
+        ["Insert"] = "Insert", ["Delete"] = "Supr", ["Left"] = "←", ["Right"] = "→", ["Up"] = "↑", ["Down"] = "↓",
+        ["Pause"] = "Pausa", ["Scroll"] = "Bloq Despl", ["Snapshot"] = "Impr Pant",
+    };
+
+    public static string Label(string combo)
+    {
+        if (combo == Copilot) return "Tecla Copilot";
+        return string.Join("+", combo.Split('+').Select(part =>
+            Spanish.TryGetValue(part, out var name) ? name
+            : part.Length == 2 && part[0] == 'D' && char.IsDigit(part[1]) ? part[1..]
+            : part.StartsWith("NumPad") ? "Num " + part[6..]
+            : part));
+    }
 }
 
 /// <summary>Quién pregunta: la mascota responde corto, en la nubecita; la isla, algo más largo.</summary>
@@ -187,6 +220,14 @@ static class Assistant
             shown = true;
             if (newline + 1 < start.Length) onText?.Invoke(start[(newline + 1)..].TrimStart());
         }
+        // Las negritas (**) no se ven en la nubecita ni en la isla: se quitan, aunque lleguen partidas en dos trozos.
+        var star = false;
+        string Plain(string piece)
+        {
+            piece = (star ? "*" + piece : piece).Replace("**", "");
+            star = piece.EndsWith('*');
+            return star ? piece[..^1] : piece;
+        }
         void Stage(AssistantStage s)
         {
             if (s <= stage) return;
@@ -222,7 +263,7 @@ static class Assistant
                                 if (request.File is not null && stage < AssistantStage.Reading) break;
                                 Stage(AssistantStage.Writing);
                                 text.Append(piece);
-                                Show(piece);
+                                Show(Plain(piece));
                                 break;
                         }
                         break;
@@ -240,7 +281,7 @@ static class Assistant
         await process.WaitForExitAsync(CancellationToken.None);
         if (cancel.IsCancellationRequested) return new AssistantResult(text.ToString(), null, model, null, "Cancelado.");
 
-        var answer = (final ?? text.ToString()).Trim();
+        var answer = (final ?? text.ToString()).Replace("**", "").Trim();
         if (answer.Length == 0 && error is null)
         {
             var problem = (await stderr).Trim();
@@ -293,7 +334,7 @@ static class Assistant
         else if (r.Voice == AssistantVoice.Mascot)
             prompt.AppendLine("Respondes en una o dos frases cortas: como máximo 220 caracteres, sin listas, sin markdown, sin títulos.");
         else
-            prompt.AppendLine("Respondes claro y breve: hasta 4 frases, o una lista corta si ayuda. Sin títulos ni markdown pesado.");
+            prompt.AppendLine("Respondes claro y breve: hasta 4 frases, o una lista corta con guiones si ayuda. En texto plano: sin títulos, negritas ni markdown.");
         prompt.AppendLine("Si no sabes algo, dilo; no inventes.");
         if (r.File is null)
         {

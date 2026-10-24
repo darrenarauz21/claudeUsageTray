@@ -27,6 +27,8 @@ sealed partial class UsageForm
         public bool AnalyzeDrops { get; init; }
         public bool Mic { get; init; }
         public string MicKey { get; init; } = "";
+        public string ChatKey { get; init; } = "";
+        public bool CopilotKey { get; init; }
         /// <summary>El modelo de voz: lo que dice la fila y su enlace (descargar, el avance o listo).</summary>
         public string VoiceStatus { get; init; } = "";
         public string VoiceAction { get; init; } = "";
@@ -363,6 +365,13 @@ sealed partial class UsageForm
                     y = LinkRow(g, draw, s.VoiceStatus, s.VoiceAction, "voice", _t.Accent, y);
                     y = SwitchRow(g, draw, "Leer las respuestas en voz alta", "readaloud", s.ReadAloud, y);
                 }
+                if (s.Chat || s.Island)
+                {
+                    y = SettingsCaption(g, draw, "Teclas", y + S(8));
+                    y = ChoiceRow(g, draw, "Atajo del chat", "chatkey", s.ChatKey, y);
+                    y = SwitchRow(g, draw, s.Mic ? "Tecla Copilot: chat y voz" : "Tecla Copilot: abre el chat", "copilot", s.CopilotKey, y);
+                    y = LinkRow(g, draw, "Atajos de teclado", "Ver…", "shortcuts", _t.Accent, y);
+                }
                 y = HintRow(g, draw, "Responde con Claude Code y gasta del plan de la cuenta elegida. La voz se pasa a texto en este equipo.", y + S(4));
                 break;
             case SettingsTab.Isla:
@@ -375,7 +384,6 @@ sealed partial class UsageForm
                     y = LinkRow(g, draw, "Permisos y preguntas en la isla", s.Approvals, "approvals", _t.Accent, y);
                     y = SwitchRow(g, draw, "Resumen de la semana, los lunes", "recap", s.WeeklyRecap, y);
                     y = LinkRow(g, draw, "El de esta semana", "Ver ahora", "recapnow", _t.Accent, y);
-                    y = LinkRow(g, draw, "Atajos de teclado", "Ver…", "shortcuts", _t.Accent, y);
                 }
                 break;
             default:

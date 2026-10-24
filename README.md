@@ -26,6 +26,9 @@ de Claude Code.
   japonés.
 - **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
   el escritorio y contar los avisos en una nubecita, a su manera.
+- **Hablar con Claude** (en Windows, por ahora): la mascota del escritorio y la **isla** de arriba de
+  la pantalla responden lo que les pregunte, por escrito o de viva voz; si les suelta un archivo, se
+  lo resumen. Vea [Hablar con Claude](#hablar-con-claude).
 
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.
@@ -92,6 +95,32 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 - **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
 - **Menú del ícono** (clic derecho; en Mac, clic): abrir, actualizar, nueva sesión, ajustes y salir.
   Notificaciones, sonido, color, animación, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
+
+## Hablar con Claude
+
+En Windows, por ahora. Todo viene apagado: se enciende en **Ajustes › Asistente** (el chat con la
+mascota y el micrófono) y en **Ajustes › Isla**. Responde Claude Code con la cuenta que usted elija y
+gasta de su plan, como cualquier mensaje.
+
+- **La mascota:** un clic en la mascota del escritorio y escríbale lo que quiera saber (cuánto le
+  queda, cómo van sus sesiones…). Responde corto, en su nubecita. Si le pide una tarea, le ofrece
+  abrir una sesión de Claude Code con ese pedido.
+- **La isla:** una barra oscura arriba, al centro de la pantalla. Asoma al acercar el cursor y se
+  abre con sus sesiones paso a paso, un chat más completo y «+ Sesión». Si lo activa, también le
+  deja responder ahí los permisos y las preguntas de Claude Code, sin ir a la terminal.
+- **Un archivo:** suéltelo sobre la mascota. Lo guarda en una caja, camina hasta la isla, lo lanza
+  y Claude le cuenta de qué trata. También se puede soltar sobre la isla.
+- **Con la voz:** mantenga **Ctrl derecho**, hable y suelte; o tóquelo dos veces y hable sin
+  mantenerlo. La voz se pasa a texto en su equipo: la primera vez se descarga el modelo (488 MB).
+- **Teclas:** **Ctrl+Alt+Espacio** abre el chat. Si su teclado tiene la **tecla Copilot**, con un
+  toque la mascota le escucha (o se abre el chat, si el micrófono está apagado), y Copilot no se
+  abre. Las dos se pueden cambiar en **Ajustes › Asistente › Teclas**, con «Grabar…».
+
+![La mascota escucha, piensa y responde](docs/capturas/mascota-voz.png)
+
+![La isla con una respuesta](docs/capturas/isla-chat.png)
+
+![La mascota lleva un archivo en una caja hasta la isla, que lo resume](docs/capturas/caja.png)
 
 ## Si algo no funciona
 

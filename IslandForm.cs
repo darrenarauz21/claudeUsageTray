@@ -76,6 +76,8 @@ sealed class IslandForm : Form
     IReadOnlyList<ChatTurn> _turns = [];
     string? _streaming;
     bool _asking;
+    long _answerEnd;        // cuándo terminó la última respuesta del chat
+    int _answerHold;        // y cuánto se queda abierta para leerla (ms)
     bool _chibi = true;
 
     // Análisis de un archivo
@@ -195,6 +197,12 @@ sealed class IslandForm : Form
             if (!turns[i].FromPerson) { _typedIndex = i; _typedShown = 0; } // una respuesta sin partes (un error): igual se escribe
         }
         if (streaming is not null && _streaming is null) { _typedShown = 0; _thinkingAt = now; } // empieza otra respuesta
+        if (_asking && !asking && turns.Count > 0 && !turns[^1].FromPerson)
+        {
+            // Terminó de responder: se queda a la vista lo que se tarda en leerla, aunque el cursor no esté encima.
+            _answerEnd = now;
+            _answerHold = Math.Clamp(3000 + 50 * turns[^1].Text.Length, 5000, 15000);
+        }
         _turns = turns;
         _streaming = streaming;
         _asking = asking;
@@ -564,6 +572,7 @@ sealed class IslandForm : Form
     bool CanFold =>
         !_pinned && !_input.Focused && _input.Value.Length == 0
         && !Analyzing && !(_page == Page.Analysis && Environment.TickCount64 - _analysisEnd < 5000) && !_asking
+        && !(_page == Page.Chat && (Typing || Environment.TickCount64 - _answerEnd < _answerHold))
         && !_listening && !_converting
         && !(Pending && _page is Page.Permission or Page.Question) // una tarjeta no se pliega sola: se responde o se deja con ⌃
         && !(_page == Page.Week && Environment.TickCount64 - _pageAt < 15000); // el resumen de la semana se queda un rato
@@ -1952,7 +1961,8 @@ sealed class IslandInput : Form
         }
     }
 
-    public new bool Focused => _box.Focused || ContainsFocus;
+    /// <summary>Tiene el foco, o lo tomará apenas aparezca (la isla se está abriendo).</summary>
+    public new bool Focused => _box.Focused || ContainsFocus || _focusPending;
 
     /// <summary>Lo escrito y no enviado.</summary>
     public string Value => _box.Text;

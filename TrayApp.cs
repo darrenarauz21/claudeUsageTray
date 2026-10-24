@@ -36,7 +36,11 @@ sealed class TrayApp : ApplicationContext
     string? _lastAnalysis, _lastAnalysisFile;
     ApprovalServer? _approvals;
     Hotkeys? _hotkeys;
+    /// <summary>La tecla Copilot y la de hablar grabada: la app se las queda (KeyHook).</summary>
+    KeyHook? _keyHook;
     VoiceInput? _voice;
+    /// <summary>Con qué tecla se empezó a hablar, si no fue la de mantener (para el «envía con…»).</summary>
+    string? _voiceTrigger;
     ReadAloud? _readAloud;
     /// <summary>A quién se le habla (se decide al empezar a escuchar), si se usó el micrófono de la isla y si hay una escucha en curso.</summary>
     bool _voiceToIsland, _micFromIsland, _voiceActive;
@@ -166,6 +170,7 @@ sealed class TrayApp : ApplicationContext
             UpdateIsland();
             UpdateHotkeys();
             UpdateVoice();
+            UpdateKeyHook();
             if (demoDrop is not null) _ = DemoDropAsync(demoDrop);
             if (demoVoice is not null && _voice is { } voice) _ = Task.Delay(1500).ContinueWith(_ => voice.DemoAsync(demoVoice),
                 TaskScheduler.FromCurrentSynchronizationContext()).Unwrap();
@@ -294,6 +299,8 @@ sealed class TrayApp : ApplicationContext
             AnalyzeDrops = s.AnalyzeDrops,
             Mic = s.Mic,
             MicKey = MicKeys.Label(s.MicKey),
+            ChatKey = KeyNames.Label(s.ChatKey),
+            CopilotKey = s.CopilotKey,
             VoiceStatus = VoiceStatusText().Status,
             VoiceAction = VoiceStatusText().Action,
             ReadAloud = s.ReadAloud,
@@ -461,7 +468,23 @@ sealed class TrayApp : ApplicationContext
                 Toggle(s => s.Mic = !s.Mic);
                 if (_settings.Mic) _ = DownloadVoiceModelAsync(); // se descarga una vez, al encenderlo
                 break;
-            case "mickey": ShowOptions(MicKeys.Choices, _settings.MicKey, k => Change(s => s.MicKey = k)); break;
+            case "mickey":
+                ShowOptions(KeyChoices(MicKeys.Choices, _settings.MicKey, "Grabar otra tecla…"), _settings.MicKey, k =>
+                {
+                    // Después de que se cierre el menú: la ventanita de grabar es modal.
+                    if (k == RecordChoice) _form.BeginInvoke(() => RecordKey(talk: true, combo => Change(s => s.MicKey = combo)));
+                    else Change(s => s.MicKey = k);
+                });
+                break;
+            case "chatkey":
+                ShowOptions(KeyChoices([(KeyNames.DefaultChat, KeyNames.Label(KeyNames.DefaultChat))], _settings.ChatKey, "Grabar otra combinación…"),
+                    _settings.ChatKey, k =>
+                    {
+                        if (k == RecordChoice) _form.BeginInvoke(() => RecordKey(talk: false, SetChatKey));
+                        else SetChatKey(k);
+                    });
+                break;
+            case "copilot": Toggle(s => s.CopilotKey = !s.CopilotKey); break;
             case "voice":
                 if (_modelDownload is { } download) download.Cancel();
                 else _ = DownloadVoiceModelAsync();
@@ -510,6 +533,7 @@ sealed class TrayApp : ApplicationContext
         UpdateIsland();
         UpdateHotkeys();
         UpdateVoice();
+        UpdateKeyHook();
     }
 
     // ── Voz ─────────────────────────────────────────────────────────────────────────────────
@@ -549,8 +573,46 @@ sealed class TrayApp : ApplicationContext
                 : "Falta el modelo de voz: se descarga en Ajustes › Asistente.");
             voice.Failed += VoiceNote;
         }
-        if (_voice is not null && Enum.TryParse<Keys>(_settings.MicKey, out var key)) _voice.Key = key;
+        // Una grabada (F13, Win+H…) la vigila KeyHook; la de mantener, VoiceInput (y si no se entiende, Ctrl derecho).
+        if (_voice is not null)
+            _voice.Key = MicKeys.IsHold(_settings.MicKey) && Enum.TryParse<Keys>(_settings.MicKey, out var key) ? key
+                : KeyCombo.TryParse(_settings.MicKey, out _) ? Keys.None : Keys.RControlKey;
         if (_island is { } island) island.MicEnabled = _voice is not null;
+    }
+
+    /// <summary>
+    /// Las teclas que la app se queda: la Copilot (con el chat o la isla) y la de hablar, si se grabó una
+    /// combinación. La Copilot habla si hay micrófono; si no, abre el chat.
+    /// </summary>
+    void UpdateKeyHook()
+    {
+        var combos = new List<KeyCombo>();
+        if (_settings.CopilotKey && (_settings.Chat || _settings.Island)) combos.Add(KeyCombo.Copilot);
+        if (_voice is not null && !MicKeys.IsHold(_settings.MicKey) && KeyCombo.TryParse(_settings.MicKey, out var talk) && !combos.Contains(talk))
+            combos.Add(talk);
+        if (combos.Count == 0)
+        {
+            _keyHook?.Dispose();
+            _keyHook = null;
+            return;
+        }
+        if (_keyHook is null)
+        {
+            _keyHook = new KeyHook();
+            _keyHook.Changed += OnHookKey;
+        }
+        _keyHook.Combos = combos;
+    }
+
+    void OnHookKey(KeyCombo combo, bool down)
+    {
+        if (_voice is { } voice)
+        {
+            _voiceTrigger = combo == KeyCombo.Copilot ? "Copilot" : combo.Label;
+            if (down) voice.ComboDown();
+            else voice.ComboUp();
+        }
+        else if (down) FocusChat(); // la Copilot, sin micrófono
     }
 
     /// <summary>A quién se le habla: a la isla si está abierta, si se usó su micrófono o si no hay mascota con chat; si no, a la mascota.</summary>
@@ -563,7 +625,8 @@ sealed class TrayApp : ApplicationContext
         _readAloud?.Stop();
         _voiceToIsland = VoiceToIsland();
         _micFromIsland = false;
-        var hint = voice.Hint(MicKeys.Label(_settings.MicKey));
+        var hint = voice.Hint(_voiceTrigger ?? MicKeys.Label(_settings.MicKey));
+        _voiceTrigger = null;
         if (_voiceToIsland && _island is { } island)
         {
             island.Listen(hint, island.IsOpen ? null : Screen.FromPoint(Cursor.Position));
@@ -622,6 +685,7 @@ sealed class TrayApp : ApplicationContext
     {
         var toIsland = _voiceActive ? _voiceToIsland : VoiceToIsland();
         _voiceActive = _micFromIsland = false;
+        _voiceTrigger = null;
         if (toIsland && _island is { } island)
         {
             island.ShowPage(IslandForm.Page.Chat, island.IsOpen ? null : Screen.FromPoint(Cursor.Position));
@@ -670,26 +734,67 @@ sealed class TrayApp : ApplicationContext
         }
         if (_hotkeys is not null) return;
         _hotkeys = new Hotkeys();
-        _hotkeys.Add(Keys.Space, "Ctrl+Alt+Espacio", "Abrir el chat", () =>
-        {
-            if (_island is { } island) island.FocusChat();
-            else if (_settings.Chat && _mascotWindow is not null) OpenChat();
-        });
-        _hotkeys.Add(Keys.A, "Ctrl+Alt+A", "Ir al permiso o la pregunta pendiente", () => _island?.ShowPending());
-        _hotkeys.Add(Keys.T, "Ctrl+Alt+T", "Traer la terminal de la sesión", () =>
+        _hotkeys.Add(KeyCombo.TryParse(_settings.ChatKey, out var chat) ? chat : new KeyCombo(Keys.Space, Ctrl: true, Alt: true),
+            "Abrir el chat", FocusChat);
+        _hotkeys.Add(Keys.A, "Ir al permiso o la pregunta pendiente", () => _island?.ShowPending());
+        _hotkeys.Add(Keys.T, "Traer la terminal de la sesión", () =>
         {
             var session = (_lastSessions ?? []).Where(s => s.State is SessionState.Waiting or SessionState.Working).FirstOrDefault()
                 ?? (_lastSessions ?? []).OrderByDescending(s => s.TurnEndedAt ?? s.StatusAt).FirstOrDefault();
             if (session is not null) Terminals.Focus(session.Pid);
         });
-        _hotkeys.Add(Keys.N, "Ctrl+Alt+N", "Abrir o plegar la isla", () => _island?.ToggleOpen());
-        _hotkeys.Add(Keys.S, "Ctrl+Alt+S", "Silenciar o volver a sonar", () => _island?.ToggleMute());
+        _hotkeys.Add(Keys.N, "Abrir o plegar la isla", () => _island?.ToggleOpen());
+        _hotkeys.Add(Keys.S, "Silenciar o volver a sonar", () => _island?.ToggleMute());
     }
+
+    /// <summary>Otro atajo del chat: los atajos se vuelven a registrar.</summary>
+    void SetChatKey(string combo)
+    {
+        _hotkeys?.Dispose();
+        _hotkeys = null;
+        Change(s => s.ChatKey = combo);
+    }
+
+    /// <summary>El atajo del chat (y la tecla Copilot sin micrófono): el campo de la isla o la nubecita de la mascota.</summary>
+    void FocusChat()
+    {
+        // Para escribir hay que estar al frente, y Windows no siempre deja a una app de fondo.
+        if (((Control?)_island ?? _mascotWindow) is { } window) Foreground.Take(window.Handle);
+        if (_island is { } island) island.FocusChat();
+        else if (_settings.Chat && _mascotWindow is not null) OpenChat();
+    }
+
+    /// <summary>«Grabar…»: espera la tecla o la combinación y, si se eligió una, la guarda.</summary>
+    void RecordKey(bool talk, Action<string> save)
+    {
+        _form.HoldOpen = true;
+        try
+        {
+            if (KeyRecorder.Record(_form.Theme, talk, talk ? "Tecla para hablar" : "Atajo del chat") is { } combo) save(combo);
+        }
+        finally { _form.HoldOpen = false; }
+    }
+
+    /// <summary>Las opciones de una tecla: las de siempre, la grabada (si es otra) y «Grabar…».</summary>
+    static IEnumerable<(string Id, string Label)> KeyChoices(IEnumerable<(string Id, string Label)> usual, string current, string record)
+    {
+        var list = usual.ToList();
+        if (!list.Any(c => c.Id == current) && current.Length > 0) list.Add((current, KeyNames.Label(current)));
+        list.Add((RecordChoice, record));
+        return list;
+    }
+
+    const string RecordChoice = "•grabar";
 
     void ShowShortcuts()
     {
         var lines = (_hotkeys?.List ?? []).Select(s => $"{s.Keys}: {s.What}{(s.Registered ? "" : " (en uso por otra app)")}").ToList();
-        if (_settings.Mic) lines.Add($"Mantener {MicKeys.Label(_settings.MicKey)}: hablarle a la mascota o a la isla");
+        if (_settings.Mic)
+            lines.Add(MicKeys.IsHold(_settings.MicKey)
+                ? $"Mantener {MicKeys.Label(_settings.MicKey)}: hablarle a la mascota o a la isla"
+                : $"{MicKeys.Label(_settings.MicKey)}: hablarle (un toque, o mantenerla)");
+        if (_keyHook?.Combos.Contains(KeyCombo.Copilot) == true && !(_settings.Mic && _settings.MicKey == KeyNames.Copilot))
+            lines.Add(_voice is not null ? "Tecla Copilot: hablarle (un toque, o mantenerla)" : "Tecla Copilot: abrir el chat");
         if (lines.Count == 0) lines.Add("Los atajos funcionan con la isla o el chat encendidos.");
         _form.HoldOpen = true;
         try { MessageBox.Show(string.Join(Environment.NewLine, lines), "Atajos de teclado", MessageBoxButtons.OK, MessageBoxIcon.Information); }
@@ -1716,6 +1821,7 @@ sealed class TrayApp : ApplicationContext
         _mascotWindow?.Dispose();
         _approvals?.Dispose();
         _hotkeys?.Dispose();
+        _keyHook?.Dispose();
         _modelDownload?.Cancel();
         _voice?.Dispose();
         _readAloud?.Dispose();
