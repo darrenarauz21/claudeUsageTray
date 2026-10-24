@@ -23,11 +23,13 @@ sealed partial class UsageForm : Form
 
     /// <summary>Mientras hay un diálogo abierto, perder el foco no cierra la ventana.</summary>
     public bool HoldOpen { get; set; }
+    /// <summary>Con --preview (para probar) la ventana no se esconde al perder el foco; Esc la cierra.</summary>
+    public bool StayOpen { get; set; }
     public DateTime LastHidden { get; private set; }
     public Theme Theme => _t;
 
     enum View { Usage, Sessions, Activity, Flows, Settings }
-    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, ViewMenu, MenuPanel, ViewRow, ViewPin, Gear, CloseSettings, Setting, FlowSession, FlowBack }
+    enum HitKind { Refresh, Account, Add, View, Session, IdleToggle, Day, ViewMenu, MenuPanel, ViewRow, ViewPin, Gear, CloseSettings, Setting, SettingsTab, FlowSession, FlowBack }
     sealed record Hit(string Key, Rectangle Bounds, HitKind Kind, Account? Account = null, SessionInfo? Session = null, View View = View.Usage, DateOnly Day = default);
 
     /// <summary>Semanas completas del cuadro de actividad, más la actual.</summary>
@@ -98,14 +100,19 @@ sealed partial class UsageForm : Form
 
         _animation.Tick += (_, _) =>
         {
-            if (Visible) Invalidate();
+            if (Visible && !InTransition) Invalidate();
             UpdateAnimation(); // se apaga sola cuando ya no hay nada que mover
         };
+        _motion.Tick += (_, _) => MotionTick();
 
-        Deactivate += (_, _) => { if (!HoldOpen) Hide(); };
+        Deactivate += (_, _) => { if (!HoldOpen && !StayOpen) Hide(); };
         VisibleChanged += (_, _) =>
         {
-            if (!Visible) LastHidden = DateTime.Now;
+            if (!Visible)
+            {
+                LastHidden = DateTime.Now;
+                EndTransition(); // escondida, la transición ya no tiene sentido: queda el estado final
+            }
             UpdateAnimation();
         };
         KeyDown += (_, e) =>
@@ -188,8 +195,11 @@ sealed partial class UsageForm : Form
 
     public void ShowSettings()
     {
-        if (_view != View.Settings) _beforeSettings = _view;
+        if (_view == View.Settings) return;
+        BeginTransition(Slide.Up);
+        _beforeSettings = _view;
         _view = View.Settings;
+        _viewMenuOpen = false;
         Relayout();
     }
 
@@ -249,7 +259,8 @@ sealed partial class UsageForm : Form
         using (var g = CreateGraphics())
         {
             var height = Compose(g, draw: false);
-            if (height != ClientSize.Height)
+            if (InTransition) _toHeight = height; // el alto llega de a poco, con la transición
+            else if (height != ClientSize.Height)
             {
                 ClientSize = new Size(ClientSize.Width, height);
                 if (Visible) Reposition();
@@ -258,13 +269,23 @@ sealed partial class UsageForm : Form
         Invalidate();
     }
 
+    /// <summary>Termina la transición en curso y deja el estado final.</summary>
+    void EndTransition()
+    {
+        if (_fromFrame is null) return;
+        _fromFrame.Dispose();
+        _fromFrame = null;
+        if (_toHeight > 0 && ClientSize.Height != _toHeight) ClientSize = new Size(ClientSize.Width, _toHeight);
+    }
+
     Account? SelectedAccount =>
         _accounts.FirstOrDefault(a => _selected is not null && Account.SamePath(a.ConfigDir, _selected)) ?? _accounts.FirstOrDefault();
 
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        Compose(e.Graphics, draw: true);
+        if (_fromFrame is { } from) PaintTransition(e.Graphics, from);
+        else Compose(e.Graphics, draw: true);
     }
 
     /// <summary>Un solo recorrido sirve para medir la altura y para dibujar.</summary>
@@ -273,6 +294,7 @@ sealed partial class UsageForm : Form
         _hits.Clear();
         if (draw) g.Clear(_t.Background);
         var y = _view == View.Settings ? ComposeSettingsHeader(g, draw, S(16)) : ComposeHeader(g, draw, S(16));
+        _headerBottom = y - S(6);
         y = _view switch
         {
             View.Usage => ComposeUsage(g, draw, y),
@@ -822,6 +844,7 @@ sealed partial class UsageForm : Form
 
     int ComposeFooter(Graphics g, bool draw, int y)
     {
+        _footerTop = y - S(1);
         var smallHeight = _small.Height;
         if (draw)
         {
@@ -849,8 +872,21 @@ sealed partial class UsageForm : Form
             var active = _view == View.Settings;
             if (active) Draw.Fill(g, _t.Accent, gear, S(8));
             else if (_hoverKey == "gear") Draw.Fill(g, _t.Hover, gear, S(8));
-            Write(g, GlyphSettings, _glyphSmall, active ? _t.Background : _t.Secondary, gear,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            var glyphColor = active ? _t.Background : _t.Secondary;
+            if (InTransition && _slide is Slide.Up or Slide.Down)
+            {
+                // Al abrir o cerrar Ajustes, el engranaje da un cuarto de vuelta (DrawString respeta la rotación; TextRenderer no).
+                var turn = (float)(90 * Smooth(TransitionProgress)) * (_slide == Slide.Up ? 1 : -1);
+                var state = g.Save();
+                g.TranslateTransform(gear.X + gear.Width / 2f, gear.Y + gear.Height / 2f);
+                g.RotateTransform(turn);
+                using var brush = new SolidBrush(glyphColor);
+                using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(GlyphSettings, _glyphSmall, brush, PointF.Empty, format);
+                g.Restore(state);
+            }
+            else
+                Write(g, GlyphSettings, _glyphSmall, glyphColor, gear, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
         return y + smallHeight + S(16);
     }
@@ -925,7 +961,7 @@ sealed partial class UsageForm : Form
                 break;
             case HitKind.ViewMenu:
                 if (_viewMenuOpen) CloseViewMenu();
-                else { _viewMenuOpen = true; Relayout(); }
+                else { BeginTransition(Slide.Fade); _viewMenuOpen = true; Relayout(); }
                 break;
             case HitKind.ViewPin:
                 TogglePin(hit.View);
@@ -940,23 +976,32 @@ sealed partial class UsageForm : Form
             case HitKind.Setting:
                 SettingRequested?.Invoke(hit.Key[4..]);
                 break;
+            case HitKind.SettingsTab when Enum.TryParse<SettingsTab>(hit.Key[5..], out var tab):
+                SelectSettingsTab(tab);
+                break;
             case HitKind.FlowSession when hit.Session is { } flow:
+                BeginTransition(Slide.FromRight);
                 _flowSession = flow.SessionId;
                 Relayout();
                 break;
             case HitKind.FlowBack:
+                BeginTransition(Slide.FromLeft);
                 _flowSession = null;
                 Relayout();
                 break;
             case HitKind.IdleToggle:
+                BeginTransition(Slide.Fade);
                 _showIdle = !_showIdle;
                 Relayout();
                 break;
             case HitKind.Session when hit.Session is { } session:
+                BeginTransition(Slide.Fade);
                 if (!_expanded.Remove(session.SessionId)) _expanded.Add(session.SessionId);
                 Relayout();
                 break;
             case HitKind.Account when hit.Account is { } account:
+                if (account.ConfigDir == _selected) break;
+                BeginTransition(Slide.Fade);
                 _selected = account.ConfigDir;
                 SelectedChanged?.Invoke(account);
                 Relayout();
@@ -975,6 +1020,9 @@ sealed partial class UsageForm : Form
         {
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             _animation.Dispose();
+            _motion.Dispose();
+            _fromFrame?.Dispose();
+            _smallStrong?.Dispose();
             _title.Dispose(); _body.Dispose(); _bodyStrong.Dispose(); _small.Dispose();
             _glyph.Dispose(); _glyphSmall.Dispose(); _spinner.Dispose(); _tiny?.Dispose();
             _accountMenu.Dispose(); _sessionMenu.Dispose();

@@ -90,3 +90,22 @@ static class Diagnostics
             + (claudeVersion is null ? "" : $" · Claude Code {claudeVersion}") + ignored;
     }
 }
+
+/// <summary>Los errores inesperados de la app, en errores.log junto a la configuración (los últimos 200 KB).</summary>
+static class ErrorLog
+{
+    public static readonly string FilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClaudeUsageTray", "errores.log");
+
+    public static void Write(Exception? error)
+    {
+        if (error is null) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            if (File.Exists(FilePath) && new FileInfo(FilePath).Length > 200_000) File.Delete(FilePath);
+            File.AppendAllText(FilePath, $"{DateTimeOffset.Now:O} {error}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (Exception) { }
+    }
+}

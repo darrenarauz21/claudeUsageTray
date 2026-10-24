@@ -32,8 +32,37 @@ static class Mascots
     }
 }
 
-/// <summary>Lo que hace el chibi: cada movimiento es una secuencia de cuadros que se repite.</summary>
-enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury, Calm }
+/// <summary>
+/// El tamaño de la mascota del escritorio. Cada uno es un número entero de pixeles por casilla, para
+/// que los pixeles no se deformen: el chibi de 1 a 4 y la clásica de 2 a 5 (a 100 %; con otra escala
+/// de Windows crecen en proporción). Normal es el de siempre.
+/// </summary>
+static class MascotSizes
+{
+    public const string Small = "pequeno", Medium = "mediano", Normal = "normal", Large = "grande";
+
+    public static readonly (string Id, string Label)[] Choices = [(Small, "Pequeño"), (Medium, "Mediano"), (Normal, "Normal"), (Large, "Grande")];
+
+    public static string Label(string id) => Choices.FirstOrDefault(c => c.Id == id).Label ?? "Normal";
+
+    /// <summary>Pixeles por casilla a 100 % (96 ppp).</summary>
+    public static int Unit(string size, bool chibi)
+    {
+        var i = Array.FindIndex(Choices, c => c.Id == size);
+        return (i < 0 ? 2 : i) + (chibi ? 1 : 2);
+    }
+
+    /// <summary>Pixeles por casilla con la escala de la pantalla (dpi / 96).</summary>
+    public static int Unit(string size, bool chibi, float scale) => Math.Max(1, (int)Math.Round(Unit(size, chibi) * scale));
+}
+
+/// <summary>
+/// Lo que hace el chibi: cada movimiento es una secuencia de cuadros que se repite. Listen, Hear y Talk
+/// son del chat (mira lo que se escribe, oye lo que se le dice al micrófono y cuenta la respuesta); Catch, Carry, CarryLeft, CarryRight y
+/// Throw, del archivo que se le suelta encima (lo atrapa, lo lleva en una caja y lo lanza a la isla), y
+/// WalkLeft y WalkRight, la vuelta a su lugar con las manos libres.
+/// </summary>
+enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury, Calm, Listen, Hear, Talk, Catch, Carry, CarryLeft, CarryRight, Throw, WalkLeft, WalkRight }
 
 /// <summary>
 /// El chibi de Claude: pelo naranja y hoodie de cangrejo (ojitos sobre antenas), en pixeles. El
@@ -75,6 +104,11 @@ static class ChibiSprite
         ['f'] = Hex(0xDE5747), // piel roja de furia, sombra
         ['G'] = Hex(0xE4DFD8), // humo
         ['g'] = Hex(0x9E978E), // humo, borde
+        ['C'] = Hex(0xD9B47C), // caja de cartón
+        ['c'] = Hex(0xAD8551), // caja, sombra
+        ['T'] = Hex(0xF4E7C6), // cinta de la caja
+        ['t'] = Hex(0xCDBB92), // cinta, sombra
+        ['d'] = Hex(0x7A5A32), // caja, por dentro
     };
 
     // Mitad izquierda del cuerpo, 16 × 48.
@@ -164,8 +198,8 @@ static class ChibiSprite
         "...KoOOOOoOOOOOO",
     ];
 
-    enum Arm { Down, Up, Wave, Out, Think, Angry }
-    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed, AnnoyedRight }
+    enum Arm { Down, Up, Wave, Out, Think, Angry, Hold }
+    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed, AnnoyedRight, LookLeft, LookRight }
     enum Mouth { Smile, Open, Small, Oh, Wavy, Cat, Pout }
 
     // Brazo izquierdo en cada pose: esquina (en casillas del chibi) y filas; el derecho se espeja.
@@ -230,7 +264,112 @@ static class ChibiSprite
             "KSSKoOOOO",
             ".KKKKKKKK",
         ]),
+        // Sosteniendo la caja por el costado: la manga baja junto al cuerpo y la mano entra hasta la caja.
+        [Arm.Hold] = (1, 31,
+        [
+            "..KOOK....",
+            ".KOOOK....",
+            ".KOOOK....",
+            ".KoooKKKK.",
+            "..KSSSSSSK",
+            "..KsSSSSSK",
+            "...KKKKKK.",
+        ]),
     };
+
+    // La caja de cartón en que se convierte un archivo soltado sobre el chibi: solapas con cinta y una etiqueta.
+    static readonly string[] Box =
+    [
+        "KKKKKKKKKKKKKK",
+        "KCCCCCTTCCCCCK",
+        "KCCCCCTTCCCCCK",
+        "KcccccttcccccK",
+        "KCCCCCCCCCCCCK",
+        "KCCWWWWWWWWCCK",
+        "KCCWKKKKKWWCCK",
+        "KCCWKKKWWWWCCK",
+        "KCCWWWWWWWWCCK",
+        "KccccccccccccK",
+        "KKKKKKKKKKKKKK",
+    ];
+    // La caja dando vueltas en el aire: de costado, con la base a la vista.
+    static readonly string[] BoxTumble =
+    [
+        "..............",
+        "KKKKKKKKKKKKKK",
+        "KccccccccccccK",
+        "KCCCCCCCCCCCCK",
+        "KCCCCCCCCCCCCK",
+        "KCCCCCCCCCCCCK",
+        "KCCCCCCCCCCCCK",
+        "KccccccccccccK",
+        "KKKKKKKKKKKKKK",
+        "..............",
+        "..............",
+    ];
+    // Abierta: por dentro se ve oscura; el frente (desde la fila 3) es el mismo de la caja cerrada.
+    static readonly string[] BoxOpenBody =
+    [
+        "KKKKKKKKKKKKKK",
+        "KddddddddddddK",
+        "KddddddddddddK",
+        "KKKKKKKKKKKKKK",
+    ];
+    // La hoja que asoma de la caja abierta, con dos renglones.
+    static readonly string[] Paper = ["KKKKKKKK", "KWWWWWWK", "KWKKKKWK", "KWWWWWWK", "KWKKKWWK", "KWWWWWWK", "KWWWWWWK"];
+    const int BoxX = 9, BoxY = 29; // dónde va la caja en las manos, en casillas del chibi
+    const int LooseX = 2, LooseY = 7; // dónde va el cuerpo de la caja sola, en su lienzo
+
+    /// <summary>
+    /// Cuadros de la caja sola: la que vuela hasta la isla (cerrada o dando vueltas) y la que se abre en
+    /// la isla mientras Claude lee (se abre, queda abierta con la hoja adentro y la hoja asoma).
+    /// </summary>
+    public enum BoxFrame { Closed, Tumbling, Opening, Open, PaperUp }
+
+    /// <summary>El lienzo de la caja sola: el cuerpo de 14 × 11 abajo al centro, con lugar para las solapas y la hoja.</summary>
+    public const int BoxColumns = 18, BoxRows = 18;
+
+    // Se arma al primer uso: usa el destello, que se declara más abajo.
+    static Dictionary<BoxFrame, char[][]>? _looseBoxes;
+
+    /// <summary>La caja sola en el cuadro pedido, en casillas de su lienzo de BoxColumns × BoxRows.</summary>
+    public static void PaintBox(PixelFill fill, BoxFrame frame) =>
+        Emit(fill, (_looseBoxes ??= Enum.GetValues<BoxFrame>().ToDictionary(f => f, BuildLooseBox))[frame]);
+
+    static char[][] BuildLooseBox(BoxFrame frame)
+    {
+        var g = Blank(BoxColumns, BoxRows);
+        switch (frame)
+        {
+            case BoxFrame.Closed:
+                Stamp(g, LooseX, LooseY, Box);
+                break;
+            case BoxFrame.Tumbling:
+                Stamp(g, LooseX, LooseY, BoxTumble);
+                break;
+            case BoxFrame.Opening: // las solapas se levantan
+                Stamp(g, LooseX, LooseY, Box);
+                Stamp(g, LooseX, LooseY, BoxOpenBody);
+                Stamp(g, 4, 4, ["KKK", "KCCK", ".KCCK"]);
+                Stamp(g, 10, 4, ["..KKK", ".KCCK", "KCCK."]);
+                break;
+            default: // abierta, con la hoja adentro o asomando
+                Stamp(g, LooseX, LooseY, Box);
+                Stamp(g, LooseX, LooseY, BoxOpenBody);
+                Stamp(g, 0, 6, ["KKKK", "KCCK", ".KK."]);
+                Stamp(g, 14, 6, ["KKKK", "KCCK", ".KK."]);
+                var up = frame == BoxFrame.PaperUp ? 2 : 0;
+                Stamp(g, 5, LooseY - 4 - up, Paper);
+                Stamp(g, LooseX, LooseY + 3, Box.Skip(3).ToArray()); // el frente tapa la parte de abajo de la hoja
+                Stamp(g, LooseX, LooseY + 3, ["KKKKKKKKKKKKKK"]);
+                if (up > 0) Stamp(g, 13, 0, Spark);
+                break;
+        }
+        return g;
+    }
+
+    /// <summary>Dónde están las manos con la caja (su esquina de arriba a la izquierda), en casillas del lienzo de 40 × 52.</summary>
+    public static (int X, int Y) BoxInHands => (Ox + BoxX, Oy + BoxY);
 
     // Ojos de 4 × 6 desde la fila 19 («.» es piel); la espiral es de 5 de ancho.
     static readonly Dictionary<Eyes, string[]> EyeShapes = new()
@@ -243,6 +382,8 @@ static class ChibiSprite
         [Eyes.Squeeze] = ["....", "KK..", "..KK", "KK..", "....", "...."], // > (el derecho, espejado: <)
         [Eyes.Annoyed] = ["....", "....", "KKKK", "KKaa", "KKAA", ".AA."], // párpado a media altura, de reojo
         [Eyes.AnnoyedRight] = ["....", "....", "KKKK", "aaKK", "AAKK", ".AA."], // de reojo al otro lado
+        [Eyes.LookLeft] = ["KKKK", "aWWa", "KKaa", "KKaa", "KKAA", ".AA."], // mirando hacia donde camina
+        [Eyes.LookRight] = ["KKKK", "aWWa", "aaKK", "aaKK", "AAKK", ".AA."],
     };
 
     // Bocas de 4 × 2 desde la columna 14, fila 25.
@@ -266,6 +407,13 @@ static class ChibiSprite
     static readonly string[] Steam = [".gg.", "gGGg", "gGGg", ".gg."];
     static readonly string[] SmallSteam = [".g.", "gGg", ".g."];
     static readonly string[] Anger = [".M.M.", "MM.MM", ".....", "MM.MM", ".M.M."]; // 💢
+    static readonly string[] Exclaim = ["BB", "BB", "BB", "BB", "..", "BB"];
+    static readonly string[] Dots = ["B.B.B"]; // «…» mientras escucha
+    // Ondas de sonido a los lados de la cabeza mientras oye el micrófono: chica y mediana (las de la izquierda, espejadas).
+    static readonly string[] WaveS = ["B.", ".B", ".B", "B."];
+    static readonly string[] WaveM = ["B..", ".B.", "..B", "..B", ".B.", "B.."];
+    static readonly string[] WaveSL = [".B", "B.", "B.", ".B"];
+    static readonly string[] WaveML = ["..B", ".B.", "B..", "B..", ".B.", "..B"];
 
     // Brazos cruzados (mitad izquierda, se espeja): una banda sobre el pecho con los codos afuera.
     static readonly string[] Cross =
@@ -322,6 +470,12 @@ static class ChibiSprite
         public bool Folded { get; init; }
         /// <summary>La cara roja de furia.</summary>
         public bool Red { get; init; }
+        /// <summary>La caja en las manos (con los brazos en Hold).</summary>
+        public bool Carrying { get; init; }
+        /// <summary>Al caminar: 1 levanta el pie izquierdo, 2 el derecho.</summary>
+        public int Step { get; init; }
+        /// <summary>Como Breathe, pero bajan también los brazos y la caja: el rebote del paso.</summary>
+        public bool Bob { get; init; }
     }
 
     sealed record Frame(char[][] Grid, int Ms);
@@ -406,6 +560,18 @@ static class ChibiSprite
         var lookRight = lookLeft with { Eyes = Eyes.AnnoyedRight, Head = 1, Crab = (2, 1) };
         (int X, int Y)[] circle = [(0, 0), (2, 0), (2, 2), (0, 2)];
         int[] wobble = [-1, 0, 1, 0];
+        var listen = new Pose { Eyes = Eyes.Up, Crab = (1, 0) };
+        var talk = new Pose();
+        var hear = new Pose { Mouth = Mouth.Small, Crab = (1, 1) };
+        var caught = new Pose { Mouth = Mouth.Open, Crab = (1, 0), Left = Arm.Up, Right = Arm.Up };
+        var carry = new Pose { Eyes = Eyes.Happy, Crab = (1, 1), Left = Arm.Hold, Right = Arm.Hold, Carrying = true };
+
+        // Camina mirando hacia donde va (con la caja o con las manos libres): pie, rebote, el otro pie, rebote.
+        Frame[] Walk(bool left, bool box)
+        {
+            var walk = (box ? carry : new Pose()) with { Eyes = left ? Eyes.LookLeft : Eyes.LookRight, Head = left ? -1 : 1, Crab = left ? (0, 1) : (2, 1) };
+            return [F(walk with { Step = 1 }, 150), F(walk with { Bob = true }, 120), F(walk with { Step = 2 }, 150), F(walk with { Bob = true }, 120)];
+        }
 
         return new()
         {
@@ -485,8 +651,54 @@ static class ChibiSprite
                 F(sleep with { Fx = [(Z, 31, -4)] }, 450),
                 F(sleep with { Breathe = true }, 450),
             ],
+            // Chat: mira la nubecita donde se le escribe y, al contestar, mueve la boca.
+            [ChibiMove.Listen] =
+            [
+                F(listen, 900), F(listen with { Crab = (0, 0) }, 500), F(listen with { Fx = [(Dots, 27, 6)] }, 400),
+                F(listen with { Crab = (2, 0), Fx = [(Dots, 27, 6)] }, 400), F(listen with { Eyes = Eyes.Closed }, 110),
+            ],
+            // Micrófono: atenta, con ondas que crecen a los lados de la cabeza.
+            [ChibiMove.Hear] =
+            [
+                F(hear with { Fx = [(WaveS, 32, 22), (WaveSL, -2, 22)] }, 180),
+                F(hear with { Fx = [(WaveS, 32, 22), (WaveM, 33, 21), (WaveSL, -2, 22), (WaveML, -4, 21)] }, 220),
+                F(hear with { Fx = [(WaveM, 33, 21), (WaveML, -4, 21)] }, 160),
+                F(hear, 140),
+                F(hear with { Fx = [(WaveS, 32, 22), (WaveSL, -2, 22)] }, 180),
+                F(hear with { Eyes = Eyes.Closed, Fx = [(WaveS, 32, 22), (WaveM, 33, 21), (WaveSL, -2, 22), (WaveML, -4, 21)] }, 110),
+                F(hear with { Fx = [(WaveM, 33, 21), (WaveML, -4, 21)] }, 160),
+                F(hear, 140),
+            ],
+            [ChibiMove.Talk] =
+            [
+                F(talk with { Mouth = Mouth.Open }, 140), F(talk, 110), F(talk with { Mouth = Mouth.Small }, 120),
+                F(talk with { Mouth = Mouth.Open, Head = 1, Crab = (2, 1) }, 140), F(talk with { Head = 1, Crab = (2, 1) }, 160),
+                F(talk with { Mouth = Mouth.Open, Head = 1, Crab = (2, 1) }, 130), F(talk with { Eyes = Eyes.Closed }, 110), F(talk, 200),
+            ],
+            // Un archivo encima: levanta los brazos para atraparlo.
+            [ChibiMove.Catch] =
+            [
+                F(caught, 180), F(caught with { Dy = -1, Fx = [(Exclaim, 31, 3)] }, 180),
+                F(caught with { Fx = [(Exclaim, 31, 2)] }, 180), F(caught with { Dy = -1, Fx = [(Exclaim, 31, 3)] }, 180),
+            ],
+            [ChibiMove.Carry] = [F(carry, 420), F(carry with { Bob = true }, 300), F(carry, 420), F(carry with { Bob = true }, 300)],
+            [ChibiMove.CarryLeft] = Walk(left: true, box: true),
+            [ChibiMove.CarryRight] = Walk(left: false, box: true),
+            [ChibiMove.WalkLeft] = Walk(left: true, box: false),
+            [ChibiMove.WalkRight] = Walk(left: false, box: false),
+            // Toma impulso, salta y la lanza hacia arriba (la caja sale a los ThrowRelease ms); se queda mirando cómo vuela.
+            [ChibiMove.Throw] =
+            [
+                F(carry with { Eyes = Eyes.Squeeze, Mouth = Mouth.Small, Bob = true }, ThrowRelease),
+                F(caught with { Eyes = Eyes.Happy, Dy = -2, Fx = [(Spark, -1, 13), (Spark, 30, 13)] }, 160),
+                F(caught with { Eyes = Eyes.Up, Mouth = Mouth.Oh, Dy = -1 }, 260),
+                F(new() { Eyes = Eyes.Up, Mouth = Mouth.Oh, Crab = (1, 0) }, 600),
+            ],
         };
     }
+
+    /// <summary>En Throw, cuándo suelta la caja (ms desde que empieza).</summary>
+    public const int ThrowRelease = 240;
 
     /// <summary>Tres destellos girando en una elipse sobre la cabeza.</summary>
     static (string[] Shape, int X, int Y)[] Orbit(double t) =>
@@ -514,10 +726,13 @@ static class ChibiSprite
             for (var y = 14; y < 29; y++)
                 for (var x = 5; x < 27; x++)
                     g[y][x] = g[y][x] switch { 'S' => 'F', 's' or 'b' => 'f', var ch => ch };
-        if (pose.Breathe) Squash(g);
+        if (pose.Step != 0) LiftFoot(g, pose.Step);
+        if (pose.Breathe || pose.Bob) Squash(g);
 
         var canvas = Blank(Columns, Rows);
         Stamp(canvas, Ox, Oy + pose.Dy, g);
+        var bob = pose.Bob ? 1 : 0; // con el rebote bajan también los brazos y la caja
+        if (pose.Carrying) Stamp(canvas, Ox + BoxX, Oy + pose.Dy + BoxY + bob, Box);
         foreach (var (arm, left) in new[] { (pose.Left, true), (pose.Right, false) })
         {
             if (arm == Arm.Down) continue;
@@ -527,7 +742,7 @@ static class ChibiSprite
                 x = 31 - x - (rows[0].Length - 1);
                 rows = [.. rows.Select(Reverse)];
             }
-            Stamp(canvas, Ox + x, Oy + pose.Dy + y, rows);
+            Stamp(canvas, Ox + x, Oy + pose.Dy + y + bob, rows);
         }
         if (pose.Maracas is { } shake)
             foreach (var (arm, left) in new[] { (pose.Left, true), (pose.Right, false) })
@@ -559,7 +774,7 @@ static class ChibiSprite
         }
         Stamp(g, 9, 19, shape);
         Stamp(g, 19, 19, shape);
-        if (eyes == Eyes.Up) // el rabillo de las pestañas
+        if (eyes is Eyes.Up or Eyes.LookLeft or Eyes.LookRight) // el rabillo de las pestañas
             for (var y = 19; y <= 20; y++)
                 g[y][8] = g[y][23] = 'K';
     }
@@ -635,6 +850,16 @@ static class ChibiSprite
                 g[31 + r][left ? c : 31 - c] = Armless[r][c];
     }
 
+    /// <summary>Levanta un pie (1 el izquierdo, 2 el derecho): esa pierna sube dos casillas y deja libre su lugar en el piso.</summary>
+    static void LiftFoot(char[][] g, int step)
+    {
+        var (from, to) = step == 1 ? (10, 15) : (16, 21);
+        for (var y = 42; y < 46; y++)
+            for (var x = from; x <= to; x++)
+                g[y][x] = g[y + 2][x];
+        for (var x = from; x <= to; x++) g[46][x] = g[47][x] = '.';
+    }
+
     /// <summary>Respira: todo lo que está sobre las piernas baja una casilla.</summary>
     static void Squash(char[][] g)
     {
@@ -700,6 +925,8 @@ static class ChibiSprite
 
     static char[][] Mirror(string[] half) => [.. half.Select(row => (row + Reverse(row)).ToCharArray())];
 
+    static char[][] Grid(string[] rows) => [.. rows.Select(row => row.ToCharArray())];
+
     static string Reverse(string row) => new([.. row.Reverse()]);
 
     static char[][] Blank(int width, int height) => [.. Enumerable.Range(0, height).Select(_ => new string('.', width).ToCharArray())];
@@ -752,6 +979,7 @@ static class ChibiSprite
 sealed class ChibiDirector
 {
     ChibiMove _state = ChibiMove.Sleep;
+    ChibiMove? _mood;
     (ChibiMove Move, long Until)? _gesture;
     ChibiMove _current = ChibiMove.Sleep;
     long _since = Environment.TickCount64;
@@ -767,6 +995,14 @@ sealed class ChibiDirector
 
     int _pokes;
     long _lastPoke;
+
+    /// <summary>
+    /// Lo que hace mientras conversa (escucha, oye, piensa, habla) o mientras lleva un archivo: pasa por
+    /// delante de lo que digan las sesiones; un gesto (un clic, un aviso) pasa por delante de todo.
+    /// </summary>
+    public void SetMood(ChibiMove? move) => _mood = move;
+
+    public ChibiMove? Mood => _mood;
 
     /// <summary>Un gesto por unos segundos, encima de lo que esté haciendo.</summary>
     public void Gesture(ChibiMove move, int ms = 2500) => _gesture = (move, Environment.TickCount64 + ms);
@@ -784,6 +1020,9 @@ sealed class ChibiDirector
         var move = _pokes switch { <= 2 => ChibiMove.Wave, <= 5 => ChibiMove.Pout, <= 8 => ChibiMove.Sulk, _ => ChibiMove.Fury };
         Gesture(move, move == ChibiMove.Wave ? 2500 : 4000);
     }
+
+    /// <summary>Cuántos clics seguidos lleva (el primero saluda y abre el chat).</summary>
+    public int Pokes => _pokes;
 
     /// <summary>
     /// Al llegar un aviso hace el mismo gesto que el aviso (festeja, piensa, se marea, duerme, baila
@@ -803,7 +1042,7 @@ sealed class ChibiDirector
             _gesture = g.Move is ChibiMove.Pout or ChibiMove.Sulk or ChibiMove.Fury
                 ? (ChibiMove.Calm, now + ChibiSprite.Length(ChibiMove.Calm)) // se calma antes de volver a lo suyo
                 : null;
-        var move = _gesture?.Move ?? _state;
+        var move = _gesture?.Move ?? _mood ?? _state;
         if (move != _current)
         {
             _current = move;

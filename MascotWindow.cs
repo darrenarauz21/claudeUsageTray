@@ -13,12 +13,21 @@ sealed class MascotWindow : Form
     public event Action? HideRequested;
     /// <summary>Se soltó en otro lugar (esquina de arriba a la izquierda, en pixeles de pantalla).</summary>
     public event Action<Point>? Moved;
+    /// <summary>Un clic encima (después de que ChibiDirector decidió el gesto).</summary>
+    public event Action? Poked;
+    /// <summary>Le soltaron archivos encima.</summary>
+    public event Action<string[]>? FilesDropped;
+    /// <summary>Un archivo pasa por encima (true) o se va sin soltarlo (false).</summary>
+    public event Action<bool>? FileHover;
+
+    /// <summary>Mientras lleva un archivo (camina, lanza): no se arrastra ni se le sueltan otros.</summary>
+    public bool Busy { get; set; }
 
     readonly ChibiDirector _director;
     readonly Func<Color> _accent;
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 };
     readonly ContextMenuStrip _menu = new();
-    readonly int _unit;
+    int _unit;
     (ChibiMove Move, int Frame) _shown = (ChibiMove.Sleep, -1);
     Point? _pressAt;
     Point _startLocation;
@@ -27,12 +36,12 @@ sealed class MascotWindow : Form
     /// <summary>El chibi (true) o la clásica, que se pinta con el acento de la paleta.</summary>
     public bool Chibi { get; }
 
-    public MascotWindow(ChibiDirector director, Point? location, bool chibi, Func<Color> accent)
+    public MascotWindow(ChibiDirector director, Point? location, bool chibi, Func<Color> accent, string size)
     {
         _director = director;
         _accent = accent;
         Chibi = chibi;
-        _unit = Math.Max(1, (int)Math.Round((chibi ? 3 : 4) * DeviceDpi / 96f));
+        _unit = MascotSizes.Unit(size, chibi, DeviceDpi / 96f);
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
@@ -45,6 +54,7 @@ sealed class MascotWindow : Form
             : new Size(ToastSprite.Columns * _unit, ToastSprite.Rows * _unit);
         Location = Fit(location ?? DefaultLocation());
         Cursor = Cursors.Hand;
+        AllowDrop = true;
 
         _menu.Items.Add("Abrir Uso de Claude", null, (_, _) => OpenRequested?.Invoke());
         // Después del clic: ocultar cierra esta ventana, y con ella el menú que está avisando.
@@ -52,6 +62,28 @@ sealed class MascotWindow : Form
         Menus.Apply(_menu, Theme.Current);
 
         _timer.Tick += (_, _) => Tick();
+    }
+
+    /// <summary>Pixeles por casilla (el tamaño elegido en Ajustes, con la escala de la pantalla).</summary>
+    public int Unit => _unit;
+
+    /// <summary>
+    /// Otro tamaño: crece o se achica desde los pies, en el mismo lugar, y da un saltito para que se
+    /// note el cambio.
+    /// </summary>
+    public void SetSize(int unit)
+    {
+        if (unit == _unit) return;
+        var feet = new Point(Left + Width / 2, Bottom);
+        _unit = unit;
+        ClientSize = Chibi
+            ? new Size(ChibiSprite.Columns * _unit, ChibiSprite.Rows * _unit)
+            : new Size(ToastSprite.Columns * _unit, ToastSprite.Rows * _unit);
+        Location = Fit(new Point(feet.X - Width / 2, feet.Y - Height));
+        _shown = (ChibiMove.Sleep, -1);
+        _director.Gesture(ChibiMove.Cheer, 700);
+        Invalidate();
+        Moved?.Invoke(Location);
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -108,10 +140,47 @@ sealed class MascotWindow : Form
         else ToastArt.Pixels(e.Graphics, 0, 0, _unit, fill => ToastSprite.PaintMove(fill, move, t, _accent()));
     }
 
+    protected override void OnDragEnter(DragEventArgs e)
+    {
+        base.OnDragEnter(e);
+        if (Busy || e.Data?.GetDataPresent(DataFormats.FileDrop) != true) return;
+        e.Effect = DragDropEffects.Copy;
+        FileHover?.Invoke(true);
+    }
+
+    protected override void OnDragLeave(EventArgs e)
+    {
+        base.OnDragLeave(e);
+        FileHover?.Invoke(false);
+    }
+
+    protected override void OnDragDrop(DragEventArgs e)
+    {
+        base.OnDragDrop(e);
+        if (!Busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0) FilesDropped?.Invoke(files);
+        else FileHover?.Invoke(false);
+    }
+
+    /// <summary>Camina hasta x (a su misma altura) en ms milisegundos, con un arranque y una llegada suaves.</summary>
+    public async Task WalkToAsync(int x, int ms)
+    {
+        var from = Left;
+        var start = Environment.TickCount64;
+        while (true)
+        {
+            var k = Math.Clamp((Environment.TickCount64 - start) / (double)Math.Max(1, ms), 0, 1);
+            var ease = k < 0.1 ? k * k * 5 : k > 0.9 ? 1 - (1 - k) * (1 - k) * 5 : k - 0.05; // casi constante, sin tirones
+            Left = (int)Math.Round(from + (x - from) * Math.Clamp(ease, 0, 1));
+            if (k >= 1) break;
+            await Task.Delay(15);
+        }
+        Left = x;
+    }
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left) return;
+        if (e.Button != MouseButtons.Left || Busy) return;
         _pressAt = Cursor.Position;
         _startLocation = Location;
         _dragging = false;
@@ -135,7 +204,11 @@ sealed class MascotWindow : Form
         if (_pressAt is null) return;
         _pressAt = null;
         if (_dragging) Moved?.Invoke(Location);
-        else _director.Poke(); // saluda; si lo siguen molestando, se enoja
+        else
+        {
+            _director.Poke(); // saluda; si lo siguen molestando, se enoja
+            Poked?.Invoke();
+        }
     }
 
     protected override void Dispose(bool disposing)

@@ -15,7 +15,7 @@ static class Program
         Args = args;
         // Mismos modos de línea de comandos que la app de Windows.
         if (args.Contains("--dump")) return Dump.Run();
-        if (args.Contains("--hook")) return NoticeDetector.RunHook();
+        if (args.Contains("--hook")) return args.Contains("--permiso") ? Approvals.RunHook() : NoticeDetector.RunHook();
         if (args.Contains("--diag"))
         {
             var settings = SettingsStore.Load();

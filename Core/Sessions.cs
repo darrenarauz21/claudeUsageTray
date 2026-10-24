@@ -19,6 +19,12 @@ sealed record FlowStep(string Id, ToolKind Kind, string Verb, string? Detail, Da
     public int? AgentSteps { get; init; }
 }
 
+/// <summary>
+/// Un archivo que Claude cambió (Edit, MultiEdit o Write): cuántas líneas sumó y quitó y el diff, con
+/// unas pocas líneas de contexto (como mucho 200). StepId es el paso del flujo que lo hizo.
+/// </summary>
+sealed record FileEdit(string StepId, string File, int Added, int Removed, IReadOnlyList<string> Lines, DateTimeOffset? At);
+
 sealed class SessionInfo
 {
     public required Account Account { get; init; }
@@ -26,6 +32,8 @@ sealed class SessionInfo
     public required string Name { get; init; }
     public required string Cwd { get; init; }
     public required SessionState State { get; init; }
+    /// <summary>El proceso de claude (para traer al frente su terminal).</summary>
+    public int Pid { get; init; }
     public DateTimeOffset? StartedAt { get; init; }
     public DateTimeOffset? StatusAt { get; init; }
     public string? Title { get; init; }
@@ -52,6 +60,10 @@ sealed class SessionInfo
     public string? Advisor { get; init; }
     /// <summary>Los pasos del turno actual, en orden.</summary>
     public IReadOnlyList<FlowStep> Flow { get; init; } = [];
+    /// <summary>Los últimos archivos que cambió (los más nuevos al final).</summary>
+    public IReadOnlyList<FileEdit> Edits { get; init; } = [];
+    /// <summary>El primer párrafo de la última respuesta (para cuando terminó).</summary>
+    public string? LastAnswer { get; init; }
 
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Name : Title;
 }
@@ -88,7 +100,8 @@ sealed class SessionMonitor
                     var pid = r.TryGetProperty("pid", out var p) && p.TryGetInt32(out var value) ? value : 0;
                     var id = Json.Str(r, "sessionId");
                     if (pid == 0 || id is null || !IsAlive(pid, Json.Str(r, "procStart")) || !seen.Add(id)) continue;
-                    result.Add(Build(account, r, id, Update(account, id)));
+                    if (Assistant.IsOwn(Json.Str(r, "cwd"))) continue; // una consulta de la mascota o de la isla, no una sesión suya
+                    result.Add(Build(account, r, id, Update(account, id), pid));
                 }
                 catch (Exception) { }
             }
@@ -103,7 +116,7 @@ sealed class SessionMonitor
             .ToList();
     }
 
-    static SessionInfo Build(Account account, JsonElement r, string id, Transcript t)
+    static SessionInfo Build(Account account, JsonElement r, string id, Transcript t, int pid)
     {
         var status = Json.Str(r, "status") ?? "";
         var statusAt = Millis(r, "statusUpdatedAt") ?? Millis(r, "updatedAt");
@@ -127,6 +140,7 @@ sealed class SessionMonitor
         {
             Account = account,
             SessionId = id,
+            Pid = pid,
             Name = Json.Str(r, "name") ?? id[..8],
             Cwd = Json.Str(r, "cwd") ?? "",
             State = state,
@@ -152,6 +166,8 @@ sealed class SessionMonitor
             Effort = t.Effort,
             Advisor = t.Advisor,
             Flow = t.Flow.ToList(),
+            Edits = t.Edits.ToList(),
+            LastAnswer = t.LastAnswer,
         };
     }
 
@@ -246,6 +262,8 @@ sealed class SessionMonitor
         public int RetryAttempt, MaxRetries;
         public string? Model, Effort, Advisor;
         public readonly List<FlowStep> Flow = new();
+        public readonly List<FileEdit> Edits = new();
+        public string? LastAnswer;
 
         public void ReadNew()
         {
@@ -287,6 +305,8 @@ sealed class SessionMonitor
             RetryAttempt = MaxRetries = 0;
             Model = Effort = Advisor = null;
             Flow.Clear();
+            Edits.Clear();
+            LastAnswer = null;
         }
 
         void Apply(string line)
@@ -358,6 +378,7 @@ sealed class SessionMonitor
             Steps = 0;
             Action = null;
             PendingTool = null;
+            LastAnswer = null;
             Flow.Clear();
             TurnStartedAt = Json.Date(r, "timestamp");
         }
@@ -399,6 +420,11 @@ sealed class SessionMonitor
             Effort = Json.Str(r, "effort") ?? Effort;
             Advisor = Json.Str(r, "advisorModel");
 
+            // El texto de la respuesta: su primer párrafo, para mostrarlo cuando la sesión termina.
+            foreach (var item in content.EnumerateArray())
+                if (Json.Str(item, "type") == "text" && Json.Str(item, "text") is { Length: > 0 } said)
+                    LastAnswer = FirstParagraph(said);
+
             foreach (var item in content.EnumerateArray())
             {
                 if (Json.Str(item, "type") != "tool_use") continue;
@@ -414,6 +440,12 @@ sealed class SessionMonitor
                         ? Json.Str(input, "subagent_type") ?? "general-purpose" : null,
                 });
 
+                if (EditOf(Json.Str(item, "id") ?? "", name, input, Json.Date(r, "timestamp")) is { } edit)
+                {
+                    Edits.Add(edit);
+                    if (Edits.Count > 30) Edits.RemoveAt(0);
+                }
+
                 if (name == "TodoWrite" && input.ValueKind == JsonValueKind.Object
                     && input.TryGetProperty("todos", out var todos) && todos.ValueKind == JsonValueKind.Array)
                 {
@@ -422,6 +454,90 @@ sealed class SessionMonitor
                 }
             }
         }
+    }
+
+    static string FirstParagraph(string text)
+    {
+        var paragraph = text.ReplaceLineEndings("\n").Trim().Split("\n\n", 2)[0].ReplaceLineEndings(" ").Trim();
+        return paragraph.Length <= 220 ? paragraph : paragraph[..219].TrimEnd() + "…";
+    }
+
+    // ── Cambios por archivo ─────────────────────────────────────────────────────────────────
+
+    /// <summary>El cambio de un Edit, un MultiEdit o un Write; null para las demás herramientas.</summary>
+    static FileEdit? EditOf(string id, string tool, JsonElement input, DateTimeOffset? at)
+    {
+        if (input.ValueKind != JsonValueKind.Object || Json.Str(input, "file_path") is not { } file) return null;
+        var pairs = new List<(string Old, string New)>();
+        switch (tool)
+        {
+            case "Edit":
+                pairs.Add((Json.Str(input, "old_string") ?? "", Json.Str(input, "new_string") ?? ""));
+                break;
+            case "MultiEdit" when input.TryGetProperty("edits", out var edits) && edits.ValueKind == JsonValueKind.Array:
+                foreach (var e in edits.EnumerateArray()) pairs.Add((Json.Str(e, "old_string") ?? "", Json.Str(e, "new_string") ?? ""));
+                break;
+            case "Write":
+                pairs.Add(("", Json.Str(input, "content") ?? ""));
+                break;
+            default:
+                return null;
+        }
+        int added = 0, removed = 0;
+        var lines = new List<string>();
+        foreach (var (old, @new) in pairs)
+        {
+            if (lines.Count > 0 && lines.Count < 200) lines.Add("  …");
+            var (a, r) = LineDiff(old, @new, lines);
+            added += a;
+            removed += r;
+        }
+        return new FileEdit(id, file, added, removed, lines, at);
+    }
+
+    static string[] SplitLines(string text) => text.Length == 0 ? [] : text.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');
+
+    /// <summary>
+    /// Diff por líneas (subsecuencia común más larga); agrega a output las líneas con «+ », «- » o «  »,
+    /// con dos de contexto alrededor de cada cambio, y devuelve cuántas sumó y quitó. Si los textos son
+    /// enormes, cuenta todo lo viejo como quitado y todo lo nuevo como sumado.
+    /// </summary>
+    static (int Added, int Removed) LineDiff(string oldText, string newText, List<string> output)
+    {
+        var a = SplitLines(oldText);
+        var b = SplitLines(newText);
+        if ((long)a.Length * b.Length > 250_000)
+        {
+            foreach (var l in a.Take(60)) Add(output, "- " + l);
+            foreach (var l in b.Take(60)) Add(output, "+ " + l);
+            return (b.Length, a.Length);
+        }
+        var lcs = new int[a.Length + 1, b.Length + 1];
+        for (var i = a.Length - 1; i >= 0; i--)
+            for (var j = b.Length - 1; j >= 0; j--)
+                lcs[i, j] = a[i] == b[j] ? lcs[i + 1, j + 1] + 1 : Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
+        var script = new List<string>();
+        int x = 0, y = 0, added = 0, removed = 0;
+        while (x < a.Length || y < b.Length)
+        {
+            if (x < a.Length && y < b.Length && a[x] == b[y]) { script.Add("  " + a[x]); x++; y++; }
+            else if (x < a.Length && (y == b.Length || lcs[x + 1, y] >= lcs[x, y + 1])) { script.Add("- " + a[x]); x++; removed++; }
+            else { script.Add("+ " + b[y]); y++; added++; }
+        }
+        // Solo dos líneas de contexto alrededor de cada cambio.
+        for (var i = 0; i < script.Count; i++)
+        {
+            var near = false;
+            for (var k = Math.Max(0, i - 2); k <= Math.Min(script.Count - 1, i + 2) && !near; k++) near = script[k][0] != ' ';
+            if (near) Add(output, script[i]);
+            else if (output.Count > 0 && output[^1] != "  …") Add(output, "  …");
+        }
+        return (added, removed);
+    }
+
+    static void Add(List<string> output, string line)
+    {
+        if (output.Count < 200) output.Add(line.Length > 240 ? line[..240] + "…" : line);
     }
 
     static string Describe(string tool, JsonElement input)

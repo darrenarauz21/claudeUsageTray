@@ -56,6 +56,40 @@ sealed class AppSettings
     /// <summary>Dónde quedó la ventana de la mascota al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
     public int? DesktopMascotX { get; set; }
     public int? DesktopMascotY { get; set; }
+    /// <summary>Tamaño de la mascota del escritorio (MascotSizes).</summary>
+    public string MascotSize { get; set; } = MascotSizes.Normal;
+    /// <summary>La última pestaña abierta de Ajustes.</summary>
+    public string SettingsTab { get; set; } = "Avisos";
+
+    /// <summary>Chat con la mascota: el clic del saludo abre un campo en la nubecita.</summary>
+    public bool Chat { get; set; }
+    /// <summary>Modelo de la mascota (alias de Claude Code): uno liviano, para respuestas cortas.</summary>
+    public string MascotModel { get; set; } = "haiku";
+    /// <summary>Modelo de la isla; null: el de sus sesiones (Claude Code usa el predeterminado de la cuenta).</summary>
+    public string? IslandModel { get; set; }
+    /// <summary>Cuenta que responde el chat (su carpeta de configuración); null: la elegida en Uso.</summary>
+    public string? AssistantAccount { get; set; }
+    /// <summary>Carpeta donde se abren las tareas que se le piden a la mascota; null: la última de «Nueva sesión».</summary>
+    public string? TaskFolder { get; set; }
+    /// <summary>Un archivo soltado sobre la mascota o la isla se analiza.</summary>
+    public bool AnalyzeDrops { get; set; } = true;
+    /// <summary>Hablarle con el micrófono (mantener MicKey).</summary>
+    public bool Mic { get; set; }
+    /// <summary>La tecla que se mantiene para hablar (nombre de System.Windows.Forms.Keys).</summary>
+    public string MicKey { get; set; } = "RControlKey";
+    /// <summary>Leer las respuestas en voz alta con una voz del sistema.</summary>
+    public bool ReadAloud { get; set; }
+
+    /// <summary>La isla del borde de arriba de la pantalla.</summary>
+    public bool Island { get; set; }
+    /// <summary>La isla se abre con el cursor encima (si no, con un clic).</summary>
+    public bool IslandHover { get; set; } = true;
+    /// <summary>La isla queda compacta a la vista mientras una sesión trabaja o espera.</summary>
+    public bool IslandWhileBusy { get; set; } = true;
+    /// <summary>El resumen de la semana, los lunes, en la isla.</summary>
+    public bool WeeklyRecap { get; set; } = true;
+    /// <summary>El lunes del último resumen semanal mostrado.</summary>
+    public DateOnly? RecapShown { get; set; }
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
     /// <summary>Lo último elegido en «Nueva sesión».</summary>

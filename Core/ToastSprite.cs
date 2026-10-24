@@ -124,6 +124,67 @@ static class ToastSprite
                     _ => Eyes.Open,
                 }, Mouth.Neutral);
                 break;
+            case ChibiMove.Listen: // mira la nubecita donde se le escribe, con puntitos
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : Eyes.Up, Mouth.Neutral);
+                for (var i = 0; i < 1 + (int)(t / 400 % 3); i++) p.Px(Blue, 19 + i * 2, 3);
+                break;
+            case ChibiMove.Hear: // oye el micrófono: ondas a los lados
+            {
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, blink ? Eyes.Closed : Eyes.Open, Mouth.Neutral);
+                var wave = (int)(t / 200 % 3);
+                if (wave >= 1) { p.Map(Blue, 0, 9, " #", "# ", "# ", " #"); p.Map(Blue, 24, 9, "# ", " #", " #", "# "); }
+                if (wave >= 2) { p.Map(Blue, 22, 8, "#", " ", " ", " ", " ", "#"); p.Map(Blue, 3, 8, "#", " ", " ", " ", " ", "#"); }
+                break;
+            }
+            case ChibiMove.Talk: // cuenta la respuesta moviendo la boca
+                DrawBody(p, Ox, Oy, false, body);
+                DrawFace(p, Ox, Oy, t / 1400 % 3 == 2 ? Eyes.Happy : Eyes.Open, t / 140 % 2 == 0 ? Mouth.Open : Mouth.Smile);
+                break;
+            case ChibiMove.Catch: // un archivo encima: brazos arriba y un «!»
+            {
+                var dy = t / 180 % 2 == 0 ? 0 : -1;
+                DrawBody(p, Ox, Oy + dy, armsUp: true, body);
+                DrawFace(p, Ox, Oy + dy, Eyes.Open, Mouth.Open);
+                p.Px(Blue, 22, 1 + dy, 1, 3);
+                p.Px(Blue, 22, 5 + dy);
+                break;
+            }
+            case ChibiMove.Carry or ChibiMove.CarryLeft or ChibiMove.CarryRight or ChibiMove.WalkLeft or ChibiMove.WalkRight:
+            {
+                // Con la caja sobre la cabeza (o con las manos libres al volver), a saltitos al caminar.
+                var walking = move is not ChibiMove.Carry;
+                var box = move is ChibiMove.Carry or ChibiMove.CarryLeft or ChibiMove.CarryRight;
+                var dy = walking ? (t / 135 % 2 == 0 ? -1 : 0) : (t / 360 % 2 == 0 ? 0 : 1);
+                var eyes = move is ChibiMove.CarryLeft or ChibiMove.WalkLeft ? Eyes.Left
+                    : move is ChibiMove.CarryRight or ChibiMove.WalkRight ? Eyes.Right : Eyes.Happy;
+                DrawBody(p, Ox, Oy + dy, armsUp: box, body);
+                DrawFace(p, Ox, Oy + dy, eyes, Mouth.Smile);
+                if (box) Box(p, Ox + 5, Oy + dy - 6);
+                break;
+            }
+            case ChibiMove.Throw: // toma impulso, salta y la lanza (sale a los ThrowRelease ms); mira cómo vuela
+                if (t < ChibiSprite.ThrowRelease)
+                {
+                    DrawBody(p, Ox, Oy + 1, armsUp: true, body);
+                    DrawFace(p, Ox, Oy + 1, Eyes.Squint, Mouth.Neutral);
+                    Box(p, Ox + 5, Oy - 5);
+                }
+                else if (t < ChibiSprite.ThrowRelease + 160)
+                {
+                    DrawBody(p, Ox, Oy - 2, armsUp: true, body);
+                    DrawFace(p, Ox, Oy - 2, Eyes.Happy, Mouth.Open);
+                    Sparkle(p, Yellow, 3, 4);
+                    Sparkle(p, Yellow, 22, 4);
+                }
+                else
+                {
+                    var up = t < ChibiSprite.ThrowRelease + 420;
+                    DrawBody(p, Ox, Oy - (up ? 1 : 0), armsUp: up, body);
+                    DrawFace(p, Ox, Oy - (up ? 1 : 0), Eyes.Up, Mouth.Open);
+                }
+                break;
             default: // quieta: parpadea y mira a los lados
                 DrawBody(p, Ox, Oy, false, body);
                 DrawFace(p, Ox, Oy, blink ? Eyes.Closed : (t / 1500 % 4) switch { 1 => Eyes.Left, 3 => Eyes.Right, _ => Eyes.Open }, Mouth.Neutral);
@@ -207,6 +268,21 @@ static class ToastSprite
     }
 
     static void Sparkle(Painter p, Color color, int x, int y) => p.Map(color, x - 1, y - 1, " # ", "###", " # ");
+
+    static readonly Color Kraft = Color.FromArgb(0xD9, 0xB4, 0x7C), KraftShade = Color.FromArgb(0xAD, 0x85, 0x51), Tape = Color.FromArgb(0xF4, 0xE7, 0xC6);
+
+    /// <summary>La caja de cartón (10 × 7) con cinta y etiqueta, la misma del chibi en chico.</summary>
+    static void Box(Painter p, int x, int y)
+    {
+        p.Px(Kraft, x + 1, y + 1, 8, 5);
+        p.Px(KraftShade, x + 1, y + 3, 8, 1);
+        p.Px(Tape, x + 4, y + 1, 2, 2);
+        p.Px(White, x + 2, y + 4, 5, 1);
+        p.Px(Ink, x, y, 10, 1);
+        p.Px(Ink, x, y + 6, 10, 1);
+        p.Px(Ink, x, y, 1, 7);
+        p.Px(Ink, x + 9, y, 1, 7);
+    }
 
     static void DrawProps(Painter p, NoticeKind kind, long t, int dy)
     {
