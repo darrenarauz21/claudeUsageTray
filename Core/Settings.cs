@@ -93,8 +93,10 @@ sealed class AppSettings
     public string ChatKey { get; set; } = KeyNames.DefaultChat;
     /// <summary>La tecla Copilot (Win+Mayús+F23) abre el chat y escucha, en vez de abrir Copilot.</summary>
     public bool CopilotKey { get; set; } = true;
-    /// <summary>Leer las respuestas en voz alta con una voz del sistema.</summary>
+    /// <summary>Leer las respuestas en voz alta.</summary>
     public bool ReadAloud { get; set; }
+    /// <summary>Con qué voz (ClaupetVoices): la femenina o la masculina de Claupet, o una de Windows.</summary>
+    public string ReadAloudVoice { get; set; } = ClaupetVoices.Female;
 
     /// <summary>La isla del borde de arriba de la pantalla.</summary>
     public bool Island { get; set; }

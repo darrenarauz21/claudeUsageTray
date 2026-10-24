@@ -23,6 +23,20 @@ static class AssistantModels
 
 }
 
+/// <summary>Las voces para leer las respuestas: las dos de Claupet (Supertonic 3, F4 y M1) o una de Windows.</summary>
+static class ClaupetVoices
+{
+    public const string Female = "F4", Male = "M1", Windows = "windows";
+
+    public static readonly (string Id, string Label)[] Choices =
+        [(Female, "Femenina"), (Male, "Masculina"), (Windows, "La de Windows")];
+
+    public static string Label(string id) => Choices.FirstOrDefault(c => c.Id == id).Label ?? Choices[0].Label;
+
+    /// <summary>Es una voz de Claupet (necesita el modelo).</summary>
+    public static bool IsClaupet(string id) => id is Female or Male;
+}
+
 /// <summary>
 /// La tecla para hablar: una de estas, que se mantiene (nombres de System.Windows.Forms.Keys), o una tecla o
 /// combinación grabada en Ajustes («Win+Shift+F23»), que también se toca una vez para hablar sin mantenerla.
@@ -74,8 +88,11 @@ enum AssistantStage { Opening, Reading, Writing }
 /// <summary>Un turno de la conversación (lo que dijo la persona o lo que respondió).</summary>
 sealed record ChatTurn(bool FromPerson, string Text);
 
-/// <summary>Una tarea que Claude propone abrir en una sesión de Claude Code.</summary>
-sealed record TaskProposal(string Prompt);
+/// <summary>Una tarea que Claude propone abrir en una sesión de Claude Code. Folder: dónde abrirla (la del archivo soltado); null, la de las tareas.</summary>
+sealed record TaskProposal(string Prompt, string? Folder = null);
+
+/// <summary>Algo que la mascota hace en el equipo (cambiar el fondo, el volumen…): Kind es la acción y Value su valor, como los dio Claude.</summary>
+sealed record AssistantAction(string Kind, string Value);
 
 /// <summary>
 /// Lo que se le pide al asistente. File: un archivo o una carpeta para analizar (si no, es una
@@ -92,15 +109,73 @@ sealed record AssistantRequest
     public string? File { get; init; }
     /// <summary>Cómo se llama la mascota que responde (el chibi o la clásica), para el tono.</summary>
     public bool Chibi { get; init; } = true;
+    /// <summary>La respuesta se leerá con la voz de Claupet: puede llevar risas o suspiros (Expressions).</summary>
+    public bool Expressive { get; init; }
 }
 
 /// <summary>
-/// La respuesta terminada. Text: lo que se muestra (sin la marca de tarea). Short: la primera línea
-/// de un análisis, para la nubecita. Model: el modelo que respondió (para el chip de la isla).
+/// La respuesta terminada. Text: lo que se muestra (sin la marca de tarea ni las expresiones). Short: la
+/// primera línea de un análisis, para la nubecita. Model: el modelo que respondió (para el chip de la
+/// isla). Action: lo que pidió hacer en el equipo; lo ejecuta la app (SystemActions). Spoken: lo que se
+/// lee en voz alta, con las expresiones.
 /// </summary>
-sealed record AssistantResult(string Text, string? Short, string? Model, TaskProposal? Task, string? Error)
+sealed record AssistantResult(string Text, string? Short, string? Model, TaskProposal? Task, string? Error, AssistantAction? Action = null, string? Spoken = null)
 {
     public bool Failed => Error is not null;
+}
+
+/// <summary>
+/// Las expresiones que la voz de Claupet sabe hacer (etiquetas de Supertonic 3 dentro del texto): se
+/// oyen, pero no se muestran.
+/// </summary>
+static class Expressions
+{
+    public static readonly string[] Tags = ["laugh", "sigh", "breath"];
+
+    /// <summary>La etiqueta con los espacios de antes: el de después queda separando las palabras.</summary>
+    static readonly System.Text.RegularExpressions.Regex Tag =
+        new(@"[ \t]*<(?:laugh|sigh|breath)>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>El texto sin las etiquetas.</summary>
+    public static string Strip(string text) => Tag.Replace(text, "").Trim();
+
+    /// <summary>
+    /// Quita las etiquetas de un texto que llega por partes: una etiqueta puede venir partida («&lt;la» y
+    /// «ugh&gt;»), así que lo que podría ser su comienzo se guarda hasta ver cómo sigue.
+    /// </summary>
+    public sealed class Filter
+    {
+        readonly StringBuilder _pending = new();
+        bool _space = true; // lo último mostrado fue un espacio (o nada): no se repite
+
+        public string Push(string piece)
+        {
+            _pending.Append(piece);
+            var text = _pending.ToString();
+            var open = text.LastIndexOf('<');
+            var hold = open >= 0 && text.IndexOf('>', open) < 0 && text.Length - open <= 8
+                && text[(open + 1)..].All(char.IsAsciiLetterLower);
+            var ready = hold ? text[..open] : text;
+            _pending.Clear();
+            if (hold) _pending.Append(text[open..]);
+            return Clean(ready);
+        }
+
+        public string Flush()
+        {
+            var rest = _pending.ToString();
+            _pending.Clear();
+            return Clean(rest);
+        }
+
+        string Clean(string text)
+        {
+            text = Tag.Replace(text, "");
+            if (_space) text = text.TrimStart(' ');
+            if (text.Length > 0) _space = text[^1] == ' ';
+            return text;
+        }
+    }
 }
 
 /// <summary>
@@ -108,9 +183,11 @@ sealed record AssistantResult(string Text, string? Short, string? Model, TaskPro
 /// elegidos, en modo seguro (sin el CLAUDE.md de la persona, hooks ni MCP: comprobado, baja la entrada
 /// de unos 7.400 a 1.000 tokens) y sin guardar la sesión. La pregunta va por la entrada estándar y el
 /// prompt de sistema en un archivo, así que nada pasa por la línea de comandos. La respuesta llega por
-/// partes (stream-json). El chat no tiene herramientas; el análisis de un archivo solo puede leer su
-/// carpeta. Cada consulta deja un sessions/&lt;pid&gt;.json mientras corre: SessionMonitor las ignora
-/// porque corren en WorkDir.
+/// partes (stream-json). El chat solo puede buscar en internet (WebSearch y WebFetch); el análisis de
+/// un archivo solo puede leer su carpeta. Lo demás no lo hace Claude: pide una acción de una lista
+/// cerrada ([ACCION], la ejecuta la app) o se lo encarga a una sesión de Claude Code ([TAREA]). Cada
+/// consulta deja un sessions/&lt;pid&gt;.json mientras corre: SessionMonitor las ignora porque corren
+/// en WorkDir.
 /// </summary>
 static class Assistant
 {
@@ -124,6 +201,16 @@ static class Assistant
 
     /// <summary>Lo que se le pide a Claude Code para marcar una tarea: la primera línea empieza así.</summary>
     const string TaskMark = "[TAREA]";
+
+    /// <summary>Lo que se le pide para hacer algo en el equipo: la primera línea empieza así y sigue un JSON.</summary>
+    const string ActionMark = "[ACCION]";
+
+    static readonly string[] Marks = [TaskMark, ActionMark];
+
+    /// <summary>Lo escrito hasta ahora puede ser el comienzo de una marca (o ya la trae completa).</summary>
+    static bool MayBeMark(string start) => Marks.Any(m => start.Length <= m.Length
+        ? m.StartsWith(start, StringComparison.OrdinalIgnoreCase)
+        : start.StartsWith(m, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Pregunta (o analiza el archivo) y avisa por partes: onText con cada trozo de texto que llega y
@@ -160,7 +247,8 @@ static class Assistant
             args.AddRange(["--tools", "Read,Glob,Grep", "--allowedTools", "Read,Glob,Grep", "--add-dir", folder,
                 "--permission-mode", "dontAsk", "--permission-prompts", "none"]);
         }
-        else args.AddRange(["--tools", ""]);
+        else args.AddRange(["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
+            "--permission-mode", "dontAsk", "--permission-prompts", "none"]);
         if (!string.IsNullOrEmpty(request.Model)) args.AddRange(["--model", request.Model]);
 
         if (claude.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
@@ -199,17 +287,17 @@ static class Assistant
         var text = new StringBuilder();
         string? model = null, final = null, error = null;
         var stage = AssistantStage.Opening;
-        // La línea de la tarea no se muestra mientras llega: se espera a ver si la respuesta empieza con la marca.
+        // La línea de la tarea o de la acción no se muestra mientras llega: se espera a ver si la respuesta empieza con una marca.
         var head = new StringBuilder();
-        var shown = request.File is not null;
+        var shown = false;
         void Show(string piece)
         {
+            if (piece.Length == 0) return;
             if (shown) { onText?.Invoke(piece); return; }
             head.Append(piece);
             var start = head.ToString().TrimStart();
             if (start.Length == 0) return;
-            var probe = start[..Math.Min(start.Length, TaskMark.Length)];
-            if (!TaskMark.StartsWith(probe, StringComparison.OrdinalIgnoreCase))
+            if (!MayBeMark(start))
             {
                 shown = true;
                 onText?.Invoke(head.ToString());
@@ -228,6 +316,8 @@ static class Assistant
             star = piece.EndsWith('*');
             return star ? piece[..^1] : piece;
         }
+        // Las risas y suspiros (<laugh>…) son para la voz: tampoco se ven.
+        var expressions = new Expressions.Filter();
         void Stage(AssistantStage s)
         {
             if (s <= stage) return;
@@ -263,7 +353,7 @@ static class Assistant
                                 if (request.File is not null && stage < AssistantStage.Reading) break;
                                 Stage(AssistantStage.Writing);
                                 text.Append(piece);
-                                Show(Plain(piece));
+                                Show(expressions.Push(Plain(piece)));
                                 break;
                         }
                         break;
@@ -278,6 +368,7 @@ static class Assistant
             }
             catch (JsonException) { }
         }
+        if (expressions.Flush() is { Length: > 0 } tail) Show(tail);
         await process.WaitForExitAsync(CancellationToken.None);
         if (cancel.IsCancellationRequested) return new AssistantResult(text.ToString(), null, model, null, "Cancelado.");
 
@@ -289,22 +380,51 @@ static class Assistant
         }
         if (error is not null) return new AssistantResult("", null, model, null, Friendly(error));
 
-        // ¿Es una tarea? La primera línea lo dice; lo demás es lo que se muestra.
+        // ¿Es una tarea o una acción? La primera línea lo dice; lo demás es lo que se muestra.
         TaskProposal? task = null;
-        if (answer.StartsWith(TaskMark, StringComparison.OrdinalIgnoreCase))
+        AssistantAction? action = null;
+        if (TakeMark(ref answer, TaskMark) is { Length: > 0 } prompt)
         {
-            var newline = answer.IndexOf('\n');
-            var prompt = (newline < 0 ? answer[TaskMark.Length..] : answer[TaskMark.Length..newline]).Trim();
-            answer = newline < 0 ? "" : answer[(newline + 1)..].Trim();
-            if (prompt.Length > 0) task = new TaskProposal(prompt);
+            // El archivo soltado: la sesión se abre en su carpeta.
+            var folder = request.File is { } dropped ? (Directory.Exists(dropped) ? dropped : Path.GetDirectoryName(dropped)) : null;
+            task = new TaskProposal(prompt, folder);
         }
+        else if (TakeMark(ref answer, ActionMark) is { } json)
+            action = ParseAction(json);
+        var spoken = answer;
+        answer = Expressions.Strip(answer);
         string? brief = null;
         if (request.File is not null)
         {
             var newline = answer.IndexOf('\n');
             brief = (newline < 0 ? answer : answer[..newline]).Trim();
         }
-        return new AssistantResult(answer, brief, model, task, null);
+        return new AssistantResult(answer, brief, model, task, null, action, spoken);
+    }
+
+    /// <summary>Si la respuesta empieza con la marca, la quita junto con su línea y devuelve lo que seguía a la marca; si no, null.</summary>
+    static string? TakeMark(ref string answer, string mark)
+    {
+        if (!answer.StartsWith(mark, StringComparison.OrdinalIgnoreCase)) return null;
+        var newline = answer.IndexOf('\n');
+        var rest = (newline < 0 ? answer[mark.Length..] : answer[mark.Length..newline]).Trim();
+        answer = newline < 0 ? "" : answer[(newline + 1)..].Trim();
+        return rest;
+    }
+
+    /// <summary>{"accion":"…","valor":"…"}; si no se entiende, una acción sin nombre (que la app dice no saber hacer).</summary>
+    static AssistantAction ParseAction(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var kind = Json.Str(doc.RootElement, "accion") ?? "";
+            var value = doc.RootElement.TryGetProperty("valor", out var v)
+                ? v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.GetRawText()
+                : "";
+            return new AssistantAction(kind.Trim().ToLowerInvariant(), value.Trim());
+        }
+        catch (JsonException) { return new AssistantAction("", ""); }
     }
 
     /// <summary>Un error de Claude Code dicho en corto (los conocidos, en español).</summary>
@@ -323,23 +443,36 @@ static class Assistant
             ? "una chica chibi de pelo naranja con un hoodie de cangrejo"
             : "la mascota clásica de Claude, una criaturita naranja de pixeles";
         var prompt = new StringBuilder();
-        prompt.AppendLine($"Eres la mascota de escritorio de la app «Uso de Claude»: {who}. Hablas en español, de tú, con calidez y alguna carita de texto como (^_^).");
+        prompt.AppendLine($"Eres Claupet, la mascota de escritorio de Claude: {who}. Hablas en español, de tú, con calidez y alguna carita de texto como (^_^).");
         if (r.File is not null)
         {
-            prompt.AppendLine("Te soltaron un archivo (o una carpeta) para que lo mires. Léelo con tus herramientas y responde así:");
+            prompt.AppendLine("Te soltaron un archivo (o una carpeta) para que lo mires. Si puedes leerlo con tus herramientas (texto, código, PDF, imágenes), léelo y responde así:");
             prompt.AppendLine("primera línea: lo esencial en una frase, de 140 caracteres como máximo;");
             prompt.AppendLine("después, en un párrafo aparte, un resumen claro de 2 a 4 frases.");
-            prompt.AppendLine("Sin títulos ni markdown. Si no puedes abrir ese tipo de archivo, dilo en una frase.");
+            prompt.AppendLine("Sin títulos ni markdown.");
+            prompt.AppendLine($"Si con tus herramientas no se puede abrir (Excel, Word, PowerPoint, comprimidos u otros binarios), no lo intentes ni digas que no puedes: encárgaselo a Claude Code. Empieza la respuesta con una línea exacta «{TaskMark} Abre «<la ruta completa del archivo>» y <lo que haga falta: resumirlo, decir qué contiene…>» y, en la línea siguiente, una frase corta para la persona.");
         }
         else if (r.Voice == AssistantVoice.Mascot)
             prompt.AppendLine("Respondes en una o dos frases cortas: como máximo 220 caracteres, sin listas, sin markdown, sin títulos.");
         else
             prompt.AppendLine("Respondes claro y breve: hasta 4 frases, o una lista corta con guiones si ayuda. En texto plano: sin títulos, negritas ni markdown.");
         prompt.AppendLine("Si no sabes algo, dilo; no inventes.");
+        if (r.Expressive)
+            prompt.AppendLine($"Tu respuesta se lee en voz alta con tu voz: si viene al caso, pon una de estas etiquetas donde se oiga, como mucho una por respuesta: {string.Join(", ", Expressions.Tags.Select(t => $"<{t}>"))} (risa, suspiro, respiración). No uses otras.");
         if (r.File is null)
         {
             prompt.AppendLine();
-            prompt.AppendLine($"Tareas: si te piden hacer un trabajo sobre código, archivos o un proyecto (programar, arreglar, crear, revisar…), no lo hagas tú. Empieza la respuesta con una línea exacta «{TaskMark} <la instrucción completa y clara para Claude Code, en español>» y, en la línea siguiente, una frase corta para la persona. La sesión se abrirá en la carpeta que elija la persona: no pongas rutas ni carpetas en la instrucción. Si solo preguntan algo, responde normal.");
+            prompt.AppendLine("Internet: puedes buscar con WebSearch y leer páginas con WebFetch. No anuncies que vas a buscar: busca y responde, sin enlaces ni lista de fuentes. Para el clima, usa WebFetch con https://wttr.in/<ciudad>?format=j1&lang=es (sin ciudad, https://wttr.in/?format=j1&lang=es, que usa la ubicación del equipo).");
+            prompt.AppendLine();
+            prompt.AppendLine($"Acciones en este equipo: si te piden una de esta lista, empieza la respuesta con una línea exacta «{ActionMark} {{\"accion\":\"…\",\"valor\":\"…\"}}» (el JSON en una sola línea) y, en la línea siguiente, una frase corta diciendo lo que hiciste. Una acción por respuesta.");
+            prompt.AppendLine("- fondo: el fondo de pantalla. valor: la ruta de una imagen del equipo o la URL https directa de una imagen .jpg o .png.");
+            prompt.AppendLine("- tema: «claro» u «oscuro» (el modo de Windows).");
+            prompt.AppendLine("- color: el color de esta app: Claude, Océano, Bosque, Lavanda, Rosa o Grafito.");
+            prompt.AppendLine("- volumen: un número de 0 a 100, «subir», «bajar», «silenciar» o «activar».");
+            prompt.AppendLine("- musica: «reproducir», «pausar», «siguiente» o «anterior» (lo que suene en Windows).");
+            prompt.AppendLine("- abrir: una URL (https, spotify: o ms-settings:) o el nombre de una app del menú Inicio. Para poner una canción o un artista, busca el video con WebSearch y abre su URL de YouTube; si piden Spotify, abre spotify:search:<lo que pidan>.");
+            prompt.AppendLine();
+            prompt.AppendLine($"Lo demás, encárgaselo a Claude Code: si te piden algo que no puedes hacer con tus herramientas ni con esas acciones (abrir o editar archivos, otros ajustes de Windows, instalar algo, programar, revisar un proyecto…), no lo intentes ni digas que no puedes. Empieza la respuesta con una línea exacta «{TaskMark} <la instrucción completa y clara para Claude Code, en español>» y, en la línea siguiente, una frase corta para la persona. La sesión se abrirá en la carpeta que elija la persona: no inventes rutas, pero si la persona nombró un archivo o una carpeta, ponlo tal cual. Si solo preguntan algo, responde normal.");
         }
         if (r.Context.Length > 0)
         {

@@ -105,15 +105,22 @@ mascota y el micrófono) y en **Ajustes › Isla**. Responde Claude Code con la 
 gasta de su plan, como cualquier mensaje.
 
 - **La mascota:** un clic en la mascota del escritorio y escríbale lo que quiera saber (cuánto le
-  queda, cómo van sus sesiones…). Responde corto, en su nubecita. Si le pide una tarea, le ofrece
-  abrir una sesión de Claude Code con ese pedido.
+  queda, cómo van sus sesiones, el clima, algo de internet…). Responde corto, en su nubecita.
+- **Lo que hace en el equipo:** cambiar el fondo de pantalla, el modo claro u oscuro, el color de
+  la app y el volumen; reproducir, pausar o pasar la música, poner una canción, y abrir una página,
+  un ajuste de Windows o una app. Lo que no sabe hacer se lo encarga a Claude Code: le ofrece abrir
+  una sesión con ese pedido.
 - **La isla:** una barra oscura arriba, al centro de la pantalla. Asoma al acercar el cursor y se
   abre con sus sesiones paso a paso, un chat más completo y «+ Sesión». Si lo activa, también le
   deja responder ahí los permisos y las preguntas de Claude Code, sin ir a la terminal.
 - **Un archivo:** suéltelo sobre la mascota. Lo guarda en una caja, camina hasta la isla, lo lanza
-  y Claude le cuenta de qué trata. También se puede soltar sobre la isla.
+  y Claude le cuenta de qué trata. También se puede soltar sobre la isla. Si es de un tipo que no
+  puede abrir, como un Excel, le ofrece abrirlo en una sesión de Claude Code.
 - **Con la voz:** mantenga **Ctrl derecho**, hable y suelte; o tóquelo dos veces y hable sin
   mantenerlo. La voz se pasa a texto en su equipo: la primera vez se descarga el modelo (488 MB).
+- **Su voz:** con «Leer las respuestas en voz alta», Claupet responde con su propia voz, femenina o
+  masculina, y a veces se ríe o suspira; también si usted le escribe, sin el micrófono. Corre en su
+  equipo: la primera vez se descarga (unos 400 MB).
 - **Teclas:** **Ctrl+Alt+Espacio** abre el chat. Si su teclado tiene la **tecla Copilot**, con un
   toque la mascota le escucha (o se abre el chat, si el micrófono está apagado), y Copilot no se
   abre. Las dos se pueden cambiar en **Ajustes › Asistente › Teclas**, con «Grabar…».

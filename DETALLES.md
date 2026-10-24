@@ -25,6 +25,7 @@ Las dos apps compilan los mismos archivos de `Core/`; solo la interfaz es propia
 | Eventos del hook | `…\ClaudeUsageTray\events.jsonl` | `…/ClaudeUsageTray/events.jsonl` |
 | Sonidos | `…\ClaudeUsageTray\sonidos` | `…/ClaudeUsageTray/sonidos` |
 | Modelo de voz (Whisper) | `…\ClaudeUsageTray\voz\ggml-small.bin` | — |
+| Voz de Claupet (Supertonic 3) | `…\ClaudeUsageTray\voz\supertonic-3` | — |
 | Consultas del asistente (prompts de sistema) | `…\ClaudeUsageTray\asistente` | — |
 | Credenciales de Claude Code (solo se leen) | `.credentials.json` de cada carpeta | Linux: igual; macOS: el Llavero |
 | Iniciar con el sistema | registro, `HKCU\…\Run` | Linux: `~/.config/autostart/uso-de-claude.desktop`; macOS: `~/Library/LaunchAgents/local.usodeclaude.plist` |
@@ -162,7 +163,8 @@ si cabe); el pin de una vista libre la prepara y el pin de una fija hace el camb
 así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
 engranaje del pie abre **Ajustes**, en cinco pestañas: Avisos (notificaciones y sonido), Apariencia,
 Asistente (chat, voz y teclas), Isla y Sistema (cuentas, inicio con el sistema, hook y diagnóstico);
-la última abierta queda en `SettingsTab`. El menú del ícono queda en abrir, actualizar, nueva
+la última abierta queda en `SettingsTab`. Todas miden lo que la más alta (con lo que esté
+encendido), así que al cambiar de pestaña el cuadro no cambia de tamaño. El menú del ícono queda en abrir, actualizar, nueva
 sesión, ajustes y salir.
 
 ## Flujos
@@ -206,12 +208,31 @@ apagado: `Chat`, `Island` y `Mic` en el `settings.json` de la app.
 la de Uso) en `…\ClaudeUsageTray\asistente`, con `--safe-mode` (sin el CLAUDE.md de la persona,
 hooks ni MCP: la entrada baja de unos 7.400 a 1.000 tokens), `--no-session-persistence` y
 `--output-format stream-json`, para mostrar la respuesta mientras llega. La pregunta va por la
-entrada estándar y el prompt de sistema en un archivo. El chat no tiene herramientas; el análisis de
-un archivo solo puede leer su carpeta (`Read`, `Glob`, `Grep`). La mascota usa `MascotModel` (Haiku,
-de entrada) y se le pide responder en 220 caracteres como mucho; la isla, `IslandModel` (vacío: el
-modelo de sus sesiones). Si la respuesta empieza con `[TAREA]`, se ofrece abrir una sesión de Claude Code con ese
-pedido en `TaskFolder`. Las consultas dejan un `sessions/<pid>.json` mientras corren; la vista
-Sesiones las ignora por su carpeta. El código está en `Core/Assistant.cs`.
+entrada estándar y el prompt de sistema en un archivo. El chat solo puede buscar en internet
+(`WebSearch` y `WebFetch`; el clima sale de `wttr.in`); el análisis de un archivo solo puede leer su
+carpeta (`Read`, `Glob`, `Grep`). La mascota usa `MascotModel` (Haiku, de entrada) y se le pide
+responder en 220 caracteres como mucho; la isla, `IslandModel` (vacío: el modelo de sus sesiones).
+La primera línea de la respuesta puede traer una marca, que no se muestra:
+
+| Marca | Qué pasa |
+|---|---|
+| `[ACCION] {"accion":"…","valor":"…"}` | la app hace esa acción en el equipo (tabla de abajo) y la mascota dice la frase que sigue, o lo que falló |
+| `[TAREA] <pedido>` | lo que Claude no puede hacer con sus herramientas ni con las acciones: se ofrece abrir una sesión de Claude Code con ese pedido, en `TaskFolder` o, si vino de un archivo soltado que no pudo abrir (un Excel, por ejemplo), en la carpeta del archivo |
+
+Las acciones son una lista cerrada (`SystemActions.cs`), para que una frase mal entendida no pueda
+hacer otra cosa; lo demás se encarga a Claude Code:
+
+| Acción | Valor | Cómo |
+|---|---|---|
+| `fondo` | ruta de una imagen o URL https de un JPEG, PNG o BMP (hasta 25 MB) | `SystemParametersInfo`; las bajadas quedan en `…\ClaudeUsageTray\fondos` (las 5 últimas) |
+| `tema` | `claro` u `oscuro` | `AppsUseLightTheme` y `SystemUsesLightTheme` del registro, y aviso a las ventanas |
+| `color` | una paleta de la app | como elegirla en **Ajustes** |
+| `volumen` | 0 a 100, `subir`, `bajar` (de a 10), `silenciar` o `activar` | Core Audio, en la salida predeterminada |
+| `musica` | `reproducir`, `pausar`, `siguiente` o `anterior` | teclas multimedia; antes de reproducir o pausar mira si algo suena (`Music.PlayingNow`) |
+| `abrir` | URL `https`, `http`, `spotify:` o `ms-settings:`, o el nombre de una app del menú Inicio | se abre con el programa de Windows; las apps, por su acceso directo |
+
+Las consultas dejan un `sessions/<pid>.json` mientras corren; la vista Sesiones las ignora por su
+carpeta. El código está en `Core/Assistant.cs`.
 
 **La isla** (`IslandForm.cs`) es una ventana siempre oscura, con el acento de la paleta. Oculta, una
 franja invisible de 320 × 6 px en el centro del borde de arriba la hace asomar compacta (300 × 36);
@@ -250,8 +271,25 @@ micrófono; si se corta, se retoma, y solo se usa si su SHA-256 coincide. La ven
 se ajusta al largo de lo dicho (`WithAudioContextSize`) en vez de los 30 s de siempre: una frase de
 3 s pasa a texto en menos de 1 s (antes, unos 5 s), con el mismo acierto (medido con 4 frases). Mientras
 se habla, cada 0,7 s de audio nuevo se muestra lo entendido hasta ahí. El modelo cargado ocupa unos
-850 MB de memoria y se suelta a los 3 minutos sin usarlo. Con «Leer las respuestas en voz alta», las
-lee una voz de Windows en español.
+850 MB de memoria y se suelta a los 3 minutos sin usarlo.
+
+**La voz de Claupet** (`Supertonic.cs`, `ClaupetVoice.cs`). Con «Leer las respuestas en voz alta» (no necesita el
+micrófono: también lee lo que responde a un mensaje escrito), las
+lee [Supertonic 3](https://github.com/supertone-inc/supertonic) en el equipo, con ONNX Runtime 1.20.1
+en la CPU: la voz femenina (F4) o la masculina (M1), en `ReadAloudVoice`. El texto entra tal cual, sin
+pasar a fonemas. La inferencia está adaptada de su ejemplo en C# (MIT); el modelo es OpenRAIL-M y su
+`LICENSE` se baja con él.
+
+| Qué | Cómo |
+|---|---|
+| Modelo | los 9 archivos que se usan (unos 400 MB), de una versión fija de Hugging Face y con su SHA-256, en `…\ClaudeUsageTray\voz\supertonic-3`; se bajan al elegir una voz de Claupet, retomando como el de Whisper |
+| Velocidad | 8 pasos, como el ejemplo: una frase de 5 s tarda unos 2 s en un Ryzen 7 5700U. Se habla frase por frase: la primera va sola (sale en menos de 1 s) y las demás se generan mientras suena la anterior |
+| Memoria | unos 550 MB con el modelo cargado; se suelta a los 3 minutos sin hablar |
+| Sonido | `waveOut`, aparte de los sonidos de los avisos (que van por `PlaySound` y se cortarían entre sí) |
+| Expresiones | con la voz de Claupet, se le permite a Claude poner `<laugh>`, `<sigh>` o `<breath>`, como mucho una por respuesta: se oyen y no se muestran (`Expressions`, también cuando llegan partidas) |
+| Sin el modelo | mientras se baja, o con «La de Windows», lee una voz de Windows en español, sin las etiquetas |
+
+Las caritas de texto, como `(^_^)`, no se leen.
 
 | Para hablar | Qué pasa |
 |---|---|
@@ -361,6 +399,12 @@ Solo en Windows, para probar el asistente:
 - `--soltar <archivo>`: como si se soltara ese archivo sobre la mascota (la caja, la isla y el resumen).
 - `--hablar <archivo.wav>`: la voz entera con ese audio (16 kHz, mono, 16 bits) en vez del
   micrófono, como si se mantuviera la tecla mientras suena. Necesita «Micrófono» encendido.
+- `--transcribir <archivo.wav>`: solo lo pasa a texto, como el micrófono, y escribe qué entendió y en
+  cuánto. Sirve para comprobar que el paquete de un solo archivo encuentra las DLL de Whisper.
+- `--accion <acción> <valor>`: hace esa acción de la mascota sin pasar por Claude (por ejemplo,
+  `--accion volumen 30`) y escribe «listo» o lo que falló.
+- `--descargar-voz`: baja la voz de Claupet como desde **Ajustes**, con el avance.
+- `--decir <F4|M1> <texto>`: lo dice con esa voz, frase por frase, y escribe cuánto tardó cada una.
 
 ## Si no salen avisos
 
