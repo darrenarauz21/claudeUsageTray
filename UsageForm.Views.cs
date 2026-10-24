@@ -9,9 +9,52 @@ sealed partial class UsageForm
 
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
-    /// <summary>Lo que muestra «Ajustes»; lo manda TrayApp cada vez que cambia algo. Speak es null si la mascota no está en el escritorio.</summary>
-    public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette,
-        string Mascot, bool DesktopMascot, bool? Speak, bool StartWithWindows, int Accounts);
+    /// <summary>Lo que muestra «Ajustes»; lo manda TrayApp cada vez que cambia algo. Los textos son los valores ya listos para mostrar.</summary>
+    public sealed record SettingsState
+    {
+        public bool Notifications { get; init; } = true;
+        public bool Sound { get; init; } = true;
+        public string SoundPack { get; init; } = "";
+        public string Palette { get; init; } = "";
+        public string Mascot { get; init; } = "";
+        public string MascotSize { get; init; } = "";
+        public bool DesktopMascot { get; init; }
+        public bool Speak { get; init; }
+        public bool FlowGestures { get; init; }
+        public bool DanceToMusic { get; init; }
+        public bool NoticeGestures { get; init; }
+        public bool GreetOnAppear { get; init; }
+        public bool AngryOnClicks { get; init; }
+        public bool SleepWithoutSessions { get; init; }
+        public bool Chat { get; init; }
+        public string MascotModel { get; init; } = "";
+        public string AssistantAccount { get; init; } = "";
+        public string TaskFolder { get; init; } = "";
+        public bool AnalyzeDrops { get; init; }
+        public bool Mic { get; init; }
+        public string MicKey { get; init; } = "";
+        public string ChatKey { get; init; } = "";
+        public bool CopilotKey { get; init; }
+        /// <summary>El modelo de voz: lo que dice la fila y su enlace (descargar, el avance o listo).</summary>
+        public string VoiceStatus { get; init; } = "";
+        public string VoiceAction { get; init; } = "";
+        public bool ReadAloud { get; init; }
+        public bool Island { get; init; }
+        public string IslandModel { get; init; } = "";
+        public bool IslandHover { get; init; }
+        public bool IslandWhileBusy { get; init; }
+        public bool WeeklyRecap { get; init; }
+        /// <summary>El hook de permisos y preguntas: «Configurar…» o «Listo».</summary>
+        public string Approvals { get; init; } = "";
+        public bool StartWithWindows { get; init; }
+        public int Accounts { get; init; }
+    }
+
+    /// <summary>Las pestañas de Ajustes, en orden.</summary>
+    public enum SettingsTab { Avisos, Apariencia, Asistente, Isla, Sistema }
+
+    /// <summary>Se cambió de pestaña en Ajustes (para recordarla).</summary>
+    public event Action<SettingsTab>? SettingsTabChanged;
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -19,7 +62,11 @@ sealed partial class UsageForm
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rectangle _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", "", "", false, null, false, 0);
+    SettingsState _settingsState = new();
+    SettingsTab _settingsTab;
+    /// <summary>Desde qué pestaña se desliza el indicador y cuándo empezó.</summary>
+    SettingsTab _tabFrom;
+    long _tabAt;
 
     static string ViewLabel(View view) => view switch
     {
@@ -42,12 +89,36 @@ sealed partial class UsageForm
 
     public void SetSettingsState(SettingsState state)
     {
+        var old = _settingsState;
         _settingsState = state;
-        if (_view == View.Settings) Invalidate();
+        if (_view != View.Settings) return;
+        // Las filas que aparecen o se van (al encender el chat, la isla, el micrófono…) entran con una transición.
+        if (old.Chat != state.Chat || old.Mic != state.Mic || old.Island != state.Island || old.DesktopMascot != state.DesktopMascot || old.DanceToMusic != state.DanceToMusic)
+        {
+            BeginTransition(Slide.Fade);
+            Relayout();
+        }
+        else Invalidate();
+    }
+
+    /// <summary>La pestaña de Ajustes con la que se abre (la última usada).</summary>
+    public void SetSettingsTab(SettingsTab tab) => _settingsTab = _tabFrom = tab;
+
+    void SelectSettingsTab(SettingsTab tab)
+    {
+        if (tab == _settingsTab) return;
+        BeginTransition(tab > _settingsTab ? Slide.FromRight : Slide.FromLeft);
+        _tabFrom = _settingsTab;
+        _tabAt = AnimationsEnabled ? Environment.TickCount64 : 0;
+        _settingsTab = tab;
+        StartMotion();
+        Relayout();
+        SettingsTabChanged?.Invoke(tab);
     }
 
     void OpenView(View view)
     {
+        if (view != _view || _viewMenuOpen) BeginTransition(view == _view ? Slide.Fade : SlideFor(_view, view));
         _view = view;
         _viewMenuOpen = false;
         _replacing = null;
@@ -56,6 +127,7 @@ sealed partial class UsageForm
 
     void CloseViewMenu()
     {
+        BeginTransition(Slide.Fade);
         _viewMenuOpen = false;
         _replacing = null;
         Relayout();
@@ -209,29 +281,135 @@ sealed partial class UsageForm
         return y + height + S(16);
     }
 
+    static readonly SettingsTab[] AllTabs = Enum.GetValues<SettingsTab>();
+
+    static string TabLabel(SettingsTab tab) => tab switch
+    {
+        SettingsTab.Avisos => "Avisos",
+        SettingsTab.Apariencia => "Apariencia",
+        SettingsTab.Asistente => "Asistente",
+        SettingsTab.Isla => "Isla",
+        _ => "Sistema",
+    };
+
+    Font? _smallStrong;
+    Font SmallStrong => _smallStrong ??= Fonts.Make("Segoe UI Variable Text Semibold", 8.75f, "Segoe UI Semibold");
+
+    /// <summary>
+    /// Las pestañas: una barra con el indicador que se desliza bajo la elegida. Cada pestaña mide lo
+    /// que su nombre más una parte igual del espacio que sobra.
+    /// </summary>
+    int ComposeSettingsTabs(Graphics g, bool draw, int y)
+    {
+        var bar = new Rectangle(Pad, y, Inner, S(32));
+        var widths = AllTabs.Select(t => TextRenderer.MeasureText(g, TabLabel(t), SmallStrong, Size.Empty, Line).Width).ToArray();
+        var extra = (bar.Width - S(8) - widths.Sum()) / (float)AllTabs.Length;
+        var cells = new RectangleF[AllTabs.Length];
+        var x = (float)bar.X + S(4);
+        for (var i = 0; i < cells.Length; i++)
+        {
+            cells[i] = new RectangleF(x, bar.Y + S(4), widths[i] + extra, bar.Height - S(8));
+            x += cells[i].Width;
+        }
+        if (draw)
+        {
+            Draw.Fill(g, _t.Hover, bar, S(9));
+            var k = (float)Smooth(Math.Clamp((Environment.TickCount64 - _tabAt) / (double)IndicatorMs, 0, 1));
+            var a = cells[(int)_tabFrom];
+            var b = cells[(int)_settingsTab];
+            var pill = new RectangleF(a.X + (b.X - a.X) * k, b.Y, a.Width + (b.Width - a.Width) * k, b.Height);
+            Draw.Fill(g, _t.Raised, pill, S(6));
+            Draw.Outline(g, _t.Border, pill, S(6));
+        }
+        for (var i = 0; i < cells.Length; i++)
+        {
+            var tab = AllTabs[i];
+            var cell = Rectangle.Round(cells[i]);
+            AddHit("stab:" + tab, cell, HitKind.SettingsTab);
+            if (!draw) continue;
+            var selected = tab == _settingsTab;
+            var color = selected || _hoverKey == "stab:" + tab ? _t.Text : _t.Secondary;
+            Write(g, TabLabel(tab), selected ? SmallStrong : _small, color, cell, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+        return bar.Bottom + S(12);
+    }
+
     int ComposeSettings(Graphics g, bool draw, int y)
     {
         var s = _settingsState;
-        y = SettingsCaption(g, draw, "Avisos", y);
-        y = SwitchRow(g, draw, "Notificaciones", "notify", s.Notifications, y);
-        y = SwitchRow(g, draw, "Sonido", "sound", s.Sound, y);
-        y = ChoiceRow(g, draw, "Estilo de sonido", "pack", s.SoundPack, y);
-        y = LinksRow(g, draw, y, ("Ver un aviso de ejemplo", "sample"), ("Abrir carpeta de sonidos", "sounds"));
-
-        y = SettingsCaption(g, draw, "Apariencia", y + S(10));
-        y = ChoiceRow(g, draw, "Color", "palette", s.Palette, y, swatch: _t.Accent);
-        y = ChoiceRow(g, draw, "Mascota", "mascot", s.Mascot, y);
-        y = SwitchRow(g, draw, "Mascota en el escritorio", "desk", s.DesktopMascot, y);
-        if (s.Speak is { } speak) y = SwitchRow(g, draw, "Hablar (los avisos en una nubecita)", "speak", speak, y);
-
-        y = SettingsCaption(g, draw, "Cuentas", y + S(10));
-        y = LinkRow(g, draw, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);
-
-        y = SettingsCaption(g, draw, "Programa", y + S(10));
-        y = SwitchRow(g, draw, "Iniciar con Windows", "startup", s.StartWithWindows, y);
-        y = LinkRow(g, draw, "Avisos de permisos (hook)", "Configurar…", "setup", _t.Accent, y);
-        y = LinkRow(g, draw, "Si algo no funciona", "Copiar diagnóstico", "diag", _t.Accent, y);
-        y = LinkRow(g, draw, "Quitar hook e inicio con Windows", "Quitar…", "unsetup", _t.Danger, y);
+        y = ComposeSettingsTabs(g, draw, y);
+        switch (_settingsTab)
+        {
+            case SettingsTab.Avisos:
+                y = SwitchRow(g, draw, "Notificaciones", "notify", s.Notifications, y);
+                y = SwitchRow(g, draw, "Sonido", "sound", s.Sound, y);
+                y = ChoiceRow(g, draw, "Estilo de sonido", "pack", s.SoundPack, y);
+                y = LinksRow(g, draw, y, ("Ver un aviso de ejemplo", "sample"), ("Abrir carpeta de sonidos", "sounds"));
+                break;
+            case SettingsTab.Apariencia:
+                y = ChoiceRow(g, draw, "Color", "palette", s.Palette, y, swatch: _t.Accent);
+                y = ChoiceRow(g, draw, "Mascota", "mascot", s.Mascot, y);
+                y = ChoiceRow(g, draw, "Tamaño de la mascota", "size", s.MascotSize, y);
+                y = SwitchRow(g, draw, "Mascota en el escritorio", "desk", s.DesktopMascot, y);
+                if (s.DesktopMascot)
+                {
+                    y = SwitchRow(g, draw, "Gestos del flujo (lo que hace la sesión)", "flowgest", s.FlowGestures, y);
+                    y = SwitchRow(g, draw, "Bailar con música", "music", s.DanceToMusic, y);
+                    y = SwitchRow(g, draw, "Gesto de los avisos", "noticegest", s.NoticeGestures, y);
+                    y = SwitchRow(g, draw, "Saludar al aparecer", "greet", s.GreetOnAppear, y);
+                    y = SwitchRow(g, draw, "Enojarse con muchos clics", "angry", s.AngryOnClicks, y);
+                    y = SwitchRow(g, draw, "Dormir sin sesiones", "sleep", s.SleepWithoutSessions, y);
+                    y = SwitchRow(g, draw, "Hablar (los avisos en una nubecita)", "speak", s.Speak, y);
+                    if (s.DanceToMusic) y = HintRow(g, draw, "La música es lo que suene en el control multimedia de Windows: Spotify, YouTube en el navegador…", y + S(4));
+                }
+                break;
+            case SettingsTab.Asistente:
+                y = SettingsCaption(g, draw, "Chat", y);
+                y = SwitchRow(g, draw, "Chat con la mascota", "chat", s.Chat, y);
+                if (s.Chat)
+                {
+                    y = ChoiceRow(g, draw, "Modelo de la mascota", "mmodel", s.MascotModel, y);
+                    y = ChoiceRow(g, draw, "Cuenta que responde", "account", s.AssistantAccount, y);
+                    y = ChoiceRow(g, draw, "Carpeta de las tareas", "folder", s.TaskFolder, y);
+                    y = SwitchRow(g, draw, "Analizar los archivos que le suelte", "drops", s.AnalyzeDrops, y);
+                }
+                y = SettingsCaption(g, draw, "Voz", y + S(8));
+                y = SwitchRow(g, draw, "Micrófono", "mic", s.Mic, y);
+                if (s.Mic)
+                {
+                    y = ChoiceRow(g, draw, "Tecla para hablar", "mickey", s.MicKey, y);
+                    y = LinkRow(g, draw, s.VoiceStatus, s.VoiceAction, "voice", _t.Accent, y);
+                    y = SwitchRow(g, draw, "Leer las respuestas en voz alta", "readaloud", s.ReadAloud, y);
+                }
+                if (s.Chat || s.Island)
+                {
+                    y = SettingsCaption(g, draw, "Teclas", y + S(8));
+                    y = ChoiceRow(g, draw, "Atajo del chat", "chatkey", s.ChatKey, y);
+                    y = SwitchRow(g, draw, s.Mic ? "Tecla Copilot: chat y voz" : "Tecla Copilot: abre el chat", "copilot", s.CopilotKey, y);
+                    y = LinkRow(g, draw, "Atajos de teclado", "Ver…", "shortcuts", _t.Accent, y);
+                }
+                y = HintRow(g, draw, "Responde con Claude Code y gasta del plan de la cuenta elegida. La voz se pasa a texto en este equipo.", y + S(4));
+                break;
+            case SettingsTab.Isla:
+                y = SwitchRow(g, draw, "Isla en el borde de arriba", "island", s.Island, y);
+                if (s.Island)
+                {
+                    y = ChoiceRow(g, draw, "Modelo de la isla", "imodel", s.IslandModel, y);
+                    y = SwitchRow(g, draw, "Abrir al pasar el cursor", "hover", s.IslandHover, y);
+                    y = SwitchRow(g, draw, "A la vista mientras algo trabaja", "busy", s.IslandWhileBusy, y);
+                    y = LinkRow(g, draw, "Permisos y preguntas en la isla", s.Approvals, "approvals", _t.Accent, y);
+                    y = SwitchRow(g, draw, "Resumen de la semana, los lunes", "recap", s.WeeklyRecap, y);
+                    y = LinkRow(g, draw, "El de esta semana", "Ver ahora", "recapnow", _t.Accent, y);
+                }
+                break;
+            default:
+                y = LinkRow(g, draw, s.Accounts == 1 ? "1 cuenta" : $"{s.Accounts} cuentas", "Agregar cuenta…", "add", _t.Accent, y);
+                y = SwitchRow(g, draw, "Iniciar con Windows", "startup", s.StartWithWindows, y);
+                y = LinkRow(g, draw, "Avisos de permisos (hook)", "Configurar…", "setup", _t.Accent, y);
+                y = LinkRow(g, draw, "Si algo no funciona", "Copiar diagnóstico", "diag", _t.Accent, y);
+                y = LinkRow(g, draw, "Quitar hook e inicio con Windows", "Quitar…", "unsetup", _t.Danger, y);
+                break;
+        }
         return y + S(14);
     }
 
@@ -241,20 +419,30 @@ sealed partial class UsageForm
         return y + _small.Height + S(6);
     }
 
+    int HintRow(Graphics g, bool draw, string text, int y)
+    {
+        var flags = TextFormatFlags.NoPadding | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+        var height = TextRenderer.MeasureText(g, text, _small, new Size(Inner, 0), flags).Height;
+        if (draw) TextRenderer.DrawText(g, text, _small, new Rectangle(Pad, y, Inner, height), _t.Tertiary, flags);
+        return y + height + S(4);
+    }
+
+    /// <summary>Un interruptor: la perilla se desliza y el color cambia al encenderlo o apagarlo.</summary>
     int SwitchRow(Graphics g, bool draw, string label, string key, bool on, int y)
     {
         var height = S(32);
         var row = new Rectangle(Pad - S(8), y, Inner + S(16), height);
         AddHit("set:" + key, row, HitKind.Setting);
+        var k = SwitchPosition(key, on);
         if (draw)
         {
             if (_hoverKey == "set:" + key) Draw.Fill(g, _t.Hover, row, S(8));
             Write(g, label, _body, _t.Text, new Rectangle(Pad, y, Inner - S(50), height), TextFormatFlags.VerticalCenter);
             var track = new RectangleF(Pad + Inner - S(34), y + (height - S(18)) / 2f, S(34), S(18));
-            Draw.Fill(g, on ? _t.Accent : _t.Track, track, track.Height / 2);
+            Draw.Fill(g, Mix(_t.Track, _t.Accent, k), track, track.Height / 2);
             var knob = S(12);
-            var kx = on ? track.Right - S(3) - knob : track.X + S(3);
-            using var brush = new SolidBrush(on ? Color.White : _t.Secondary);
+            var kx = track.X + S(3) + (track.Width - S(6) - knob) * k;
+            using var brush = new SolidBrush(Mix(_t.Secondary, Color.White, k));
             g.FillEllipse(brush, kx, track.Y + (track.Height - knob) / 2, knob, knob);
         }
         return y + height;
@@ -269,10 +457,12 @@ sealed partial class UsageForm
         if (draw)
         {
             if (_hoverKey == "set:" + key) Draw.Fill(g, _t.Hover, row, S(8));
-            Write(g, label, _body, _t.Text, new Rectangle(Pad, y, Inner / 2, height), TextFormatFlags.VerticalCenter);
-            var valueWidth = TextRenderer.MeasureText(g, value, _body, Size.Empty, Line).Width;
+            var labelWidth = TextRenderer.MeasureText(g, label, _body, Size.Empty, Line).Width;
+            Write(g, label, _body, _t.Text, new Rectangle(Pad, y, labelWidth, height), TextFormatFlags.VerticalCenter);
+            var space = Inner - labelWidth - S(18) - S(14) - (swatch is null ? 0 : S(20));
+            var valueWidth = Math.Max(0, Math.Min(space, TextRenderer.MeasureText(g, value, _body, Size.Empty, Line).Width));
             var valueX = Pad + Inner - S(18) - valueWidth;
-            Write(g, value, _body, _t.Secondary, new Rectangle(valueX, y, valueWidth, height), TextFormatFlags.VerticalCenter);
+            Write(g, value, _body, _t.Secondary, new Rectangle(valueX, y, valueWidth, height), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             if (swatch is { } color)
             {
                 var dot = S(12);

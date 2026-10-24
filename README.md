@@ -18,14 +18,19 @@ de Claude Code.
   ícono al actualizar y sale en los avisos (la clásica, el chibi, el asterisco, los puntos o
   ninguna), en **Ajustes**.
 - **Chibi:** una mascota más, Claude con pelo naranja y hoodie de cangrejo. Aparece en los avisos y
-  al actualizar, y puede quedarse en el escritorio: baila mientras sus sesiones trabajan, piensa
-  cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas cuando se renueva
-  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia; cuando
+  al actualizar, y puede quedarse en el escritorio: muestra lo que hacen sus sesiones (lee un libro,
+  busca con la lupa, escribe en su libreta, teclea en su laptop, gira el globo, guía a sus ayudantes,
+  piensa o, con otras herramientas, construye una casita), cabecea si suena música y baila cuando no
+  hay trabajo, piensa cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas
+  cuando se renueva un límite. Cada comportamiento tiene su interruptor en **Ajustes**. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia; cuando
   se le pasa, suspira y busca de reojo quién fue. Trae su
   propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en
   japonés.
 - **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
-  el escritorio y contar los avisos en una nubecita, a su manera.
+  el escritorio, hacer los mismos gestos y contar los avisos en una nubecita, a su manera.
+- **Hablar con Claude** (en Windows, por ahora): la mascota del escritorio y la **isla** de arriba de
+  la pantalla responden lo que les pregunte, por escrito o de viva voz; si les suelta un archivo, se
+  lo resumen. Vea [Hablar con Claude](#hablar-con-claude).
 
 Necesita tener **Claude Code** instalado y con la sesión iniciada: de ahí lee todo. No guarda
 contraseñas ni el texto de sus conversaciones.
@@ -34,13 +39,13 @@ contraseñas ni el texto de sus conversaciones.
 
 | Sistema | Archivo |
 |---|---|
-| Windows 10 y 11 | [UsoDeClaude-windows-x64.exe](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-windows-x64.exe) |
-| macOS con chip Apple (M1, M2, M3…) | [UsoDeClaude-macos-arm64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-arm64.zip) |
-| macOS con Intel | [UsoDeClaude-macos-x64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-x64.zip) |
-| Linux (x64) | [UsoDeClaude-linux-x64.tar.gz](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-linux-x64.tar.gz) |
+| Windows 10 y 11 | [UsoDeClaude-windows-x64.exe](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-windows-x64.exe) |
+| macOS con chip Apple (M1, M2, M3…) | [UsoDeClaude-macos-arm64.zip](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-macos-arm64.zip) |
+| macOS con Intel | [UsoDeClaude-macos-x64.zip](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-macos-x64.zip) |
+| Linux (x64) | [UsoDeClaude-linux-x64.tar.gz](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-linux-x64.tar.gz) |
 
 Los enlaces descargan siempre la última versión; todas están en
-[Releases](https://github.com/darrenarauz21/claudeUsageTray/releases). No hace falta instalar nada
+[Releases](https://github.com/darrenarauz21/claupet/releases). No hace falta instalar nada
 más: cada archivo trae todo lo que necesita.
 
 ## Instalar
@@ -92,6 +97,32 @@ Al abrirla, la app le pregunta qué configurar. Puede aceptar todo con **Aplicar
 - **Clic derecho en una sesión:** abrir otra en la misma carpeta, abrir la carpeta o copiar el ID.
 - **Menú del ícono** (clic derecho; en Mac, clic): abrir, actualizar, nueva sesión, ajustes y salir.
   Notificaciones, sonido, color, animación, cuentas, inicio con el sistema y diagnóstico están en **Ajustes**.
+
+## Hablar con Claude
+
+En Windows, por ahora. Todo viene apagado: se enciende en **Ajustes › Asistente** (el chat con la
+mascota y el micrófono) y en **Ajustes › Isla**. Responde Claude Code con la cuenta que usted elija y
+gasta de su plan, como cualquier mensaje.
+
+- **La mascota:** un clic en la mascota del escritorio y escríbale lo que quiera saber (cuánto le
+  queda, cómo van sus sesiones…). Responde corto, en su nubecita. Si le pide una tarea, le ofrece
+  abrir una sesión de Claude Code con ese pedido.
+- **La isla:** una barra oscura arriba, al centro de la pantalla. Asoma al acercar el cursor y se
+  abre con sus sesiones paso a paso, un chat más completo y «+ Sesión». Si lo activa, también le
+  deja responder ahí los permisos y las preguntas de Claude Code, sin ir a la terminal.
+- **Un archivo:** suéltelo sobre la mascota. Lo guarda en una caja, camina hasta la isla, lo lanza
+  y Claude le cuenta de qué trata. También se puede soltar sobre la isla.
+- **Con la voz:** mantenga **Ctrl derecho**, hable y suelte; o tóquelo dos veces y hable sin
+  mantenerlo. La voz se pasa a texto en su equipo: la primera vez se descarga el modelo (488 MB).
+- **Teclas:** **Ctrl+Alt+Espacio** abre el chat. Si su teclado tiene la **tecla Copilot**, con un
+  toque la mascota le escucha (o se abre el chat, si el micrófono está apagado), y Copilot no se
+  abre. Las dos se pueden cambiar en **Ajustes › Asistente › Teclas**, con «Grabar…».
+
+![La mascota escucha, piensa y responde](docs/capturas/mascota-voz.png)
+
+![La isla con una respuesta](docs/capturas/isla-chat.png)
+
+![La mascota lleva un archivo en una caja hasta la isla, que lo resume](docs/capturas/caja.png)
 
 ## Si algo no funciona
 

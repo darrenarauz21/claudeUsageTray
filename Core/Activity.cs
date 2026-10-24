@@ -26,6 +26,37 @@ sealed class ActivitySummary
     public DateOnly? FirstDay => Days.Count == 0 ? null : Days.Keys.Min();
 }
 
+/// <summary>
+/// El resumen de una semana (de lunes a domingo) con lo que la app guarda por día: tokens, sesiones,
+/// pedidos, pasos, días activos, el día más activo y el modelo favorito. Sin texto de conversaciones.
+/// </summary>
+sealed record WeekRecap(DateOnly Monday, long Tokens, int Sessions, int Prompts, int ToolCalls, int ActiveDays, DateOnly? BusiestDay, string? FavoriteModel)
+{
+    /// <summary>La semana que empieza ese lunes; null si no hubo actividad.</summary>
+    public static WeekRecap? For(ActivitySummary summary, DateOnly monday)
+    {
+        var days = Enumerable.Range(0, 7).Select(i => monday.AddDays(i)).Select(d => (Day: d, Record: summary.Get(d))).Where(x => x.Record is { Tokens: > 0 }).ToList();
+        if (days.Count == 0) return null;
+        var models = new Dictionary<string, long>();
+        foreach (var (_, r) in days)
+            foreach (var (model, tokens) in r!.Models)
+                models[model] = models.GetValueOrDefault(model) + tokens;
+        return new WeekRecap(monday, days.Sum(d => d.Record!.Tokens), days.Sum(d => d.Record!.Sessions), days.Sum(d => d.Record!.Prompts),
+            days.Sum(d => d.Record!.ToolCalls), days.Count, days.MaxBy(d => d.Record!.Tokens).Day,
+            models.Count == 0 ? null : Format.Model(models.MaxBy(m => m.Value).Key));
+    }
+
+    /// <summary>El lunes de la semana de ese día.</summary>
+    public static DateOnly MondayOf(DateOnly day) => day.AddDays(-(((int)day.DayOfWeek + 6) % 7));
+
+    public string Range => $"{Monday:d 'de' MMMM} al {Monday.AddDays(6):d 'de' MMMM}";
+
+    /// <summary>En texto, para copiarlo.</summary>
+    public string Text =>
+        $"Mi semana con Claude ({Range}): {Format.Tokens(Tokens)} tokens, {Sessions} sesiones, {Prompts} pedidos y {ToolCalls} pasos en {ActiveDays} días."
+        + (BusiestDay is { } busiest ? $" Día más activo: {busiest:dddd}." : "") + (FavoriteModel is { } model ? $" Modelo favorito: {model}." : "");
+}
+
 sealed record ActivityStats(long Tokens, int ActiveDays, int CurrentStreak, int LongestStreak, DateOnly? BusiestDay, string? FavoriteModel)
 {
     public static ActivityStats Compute(ActivitySummary summary, DateOnly from, DateOnly to)

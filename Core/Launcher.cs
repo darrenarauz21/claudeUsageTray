@@ -12,6 +12,9 @@ sealed class LaunchOptions
     public string? Model { get; set; }
     public string? Effort { get; set; }
     public string? Advisor { get; set; }
+    /// <summary>El primer mensaje de la sesión (una tarea que se le pidió a la mascota). No se guarda.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Prompt { get; set; }
 }
 
 /// <summary>
@@ -57,6 +60,7 @@ static class Launcher
         if (o.Model is { } model) command.Append(" --model ").Append(Quote(model));
         if (o.Effort is { } effort) command.Append(" --effort ").Append(Quote(effort));
         if (o.Advisor is { } advisor && advisor != NoAdvisor) command.Append(" --advisor ").Append(Quote(advisor));
+        if (!string.IsNullOrWhiteSpace(o.Prompt)) command.Append(' ').Append(Quote(o.Prompt));
         script.AppendLine(command.ToString());
         return script.ToString();
     }
@@ -74,6 +78,7 @@ static class Launcher
         if (o.Model is { } model) command.Append(" --model ").Append(PosixQuote(model));
         if (o.Effort is { } effort) command.Append(" --effort ").Append(PosixQuote(effort));
         if (o.Advisor is { } advisor && advisor != NoAdvisor) command.Append(" --advisor ").Append(PosixQuote(advisor));
+        if (!string.IsNullOrWhiteSpace(o.Prompt)) command.Append(' ').Append(PosixQuote(o.Prompt));
         parts.Add(command.ToString());
         return string.Join("; ", parts);
     }

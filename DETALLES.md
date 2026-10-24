@@ -24,6 +24,8 @@ Las dos apps compilan los mismos archivos de `Core/`; solo la interfaz es propia
 | Historial diario (actividad) | `…\ClaudeUsageTray\history.json` | `…/ClaudeUsageTray/history.json` |
 | Eventos del hook | `…\ClaudeUsageTray\events.jsonl` | `…/ClaudeUsageTray/events.jsonl` |
 | Sonidos | `…\ClaudeUsageTray\sonidos` | `…/ClaudeUsageTray/sonidos` |
+| Modelo de voz (Whisper) | `…\ClaudeUsageTray\voz\ggml-small.bin` | — |
+| Consultas del asistente (prompts de sistema) | `…\ClaudeUsageTray\asistente` | — |
 | Credenciales de Claude Code (solo se leen) | `.credentials.json` de cada carpeta | Linux: igual; macOS: el Llavero |
 | Iniciar con el sistema | registro, `HKCU\…\Run` | Linux: `~/.config/autostart/uso-de-claude.desktop`; macOS: `~/Library/LaunchAgents/local.usodeclaude.plist` |
 
@@ -62,9 +64,15 @@ muestra al elegir.
   sola al elegir el chibi.
 - **Hablar:** con la mascota en el escritorio, cuenta cada aviso en una nubecita, a su manera
   (`MascotLines`: de tú y con caritas), además del aviso de siempre.
+- **Un interruptor por comportamiento** de la mascota del escritorio, todos encendidos al empezar:
+  gestos del flujo (si se apaga, baila mientras trabaja, como antes), bailar con música, gesto de los
+  avisos, saludar al aparecer, enojarse con muchos clics (si se apaga, siempre saluda) y dormir sin
+  sesiones (si se apaga, se queda quieta). En Linux y macOS no está «Bailar con música»: la música
+  sale del control multimedia de Windows.
 
 Se guardan en `Palette`, `Animation` (el estilo al actualizar), `Mascot` (la de los avisos),
-`DesktopMascot` y `Speak` del `settings.json` de la app.
+`DesktopMascot`, `Speak`, `FlowGestures`, `DanceToMusic`, `NoticeGestures`, `GreetOnAppear`,
+`AngryOnClicks` y `SleepWithoutSessions` del `settings.json` de la app.
 
 ## Chibi
 
@@ -78,7 +86,16 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Movimiento | Cuándo |
 |---|---|
 | Quieta (parpadea y mira) | hay sesiones, ninguna trabaja |
-| Bailar | alguna sesión trabaja |
+| Leer (un libro; los ojos van por los renglones y pasa la página) | la sesión lee (Read) |
+| Buscar (mira por la lupa con un ojo) | busca (Grep, Glob, ToolSearch) |
+| Editar (escribe en la libreta, renglón por renglón) | edita (Edit, Write, NotebookEdit) |
+| Ejecutar (teclea detrás de la laptop, con la pantalla en los ojos) | ejecuta (Bash, PowerShell) |
+| Web (el globo gira y los ojitos de cangrejo hacen de antenas) | busca o lee en la web |
+| Agentes (señala, aparece un ayudante con un «puf» y lo observa) | delega en un subagente |
+| Pensar el siguiente paso (una nube con tres puntos) | trabaja y el último paso ya volvió |
+| Construir una casita con el mazo (de rodillas, de pie, de espaldas y del otro lado) | otra herramienta (MCP, skills, la lista de tareas…) |
+| Festejar la casita (lista; salta contenta) | esa otra herramienta terminó |
+| Bailar | alguna sesión trabaja, con «Gestos del flujo» apagado; sin trabajo y con música |
 | Pensar (manito en la boca) | alguna espera su respuesta; en los avisos de pregunta, permiso, reintento, uso alto y sesión vencida |
 | Dormida | no hay sesiones; aviso de sesión cerrada |
 | Festejar | terminó |
@@ -90,8 +107,21 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Furia (roja, brazos en Λ, humo y 💢) | 9 clics seguidos o más; se le pasa a los 4 s sin clics |
 | Se calma (suspira y mira de reojo a los lados, buscando quién fue) | al pasársele el puchero, los brazos cruzados o la furia; después vuelve a lo que corresponda |
 
+Con varias sesiones, `ChibiDirector` elige primero por importancia y, dentro del mismo nivel, la
+sesión con el último paso: una pregunta o un permiso en cualquiera (interrumpe enseguida); lo que
+cambia cosas (editar, ejecutar, agentes); lo que consulta (leer, buscar, web, otras herramientas);
+pensar. Cada gesto del flujo dura al menos una vuelta (la casita, unos 3 s), así que se ven también
+los pasos de milisegundos: la app lee las sesiones cada 1,5 a 3 s y de cada una mira solo el último
+paso. Los gestos del flujo están en `ChibiFlows` y la casita, con las vistas de perfil y de espaldas
+que solo usa ella, en `ChibiBuild`.
+
+Con música (algo reproduciéndose en el control multimedia de Windows, `Core/Music.cs`: Spotify,
+YouTube en el navegador…), el gesto del flujo cabecea al compás y suelta notitas; al ejecutar se pone
+audífonos y mece la cabecita. Sin trabajo, baila. Solo se mira si hay algo reproduciéndose, no qué
+suena, y solo con «Bailar con música» y la mascota en el escritorio.
+
 Con un aviso, la mascota del escritorio hace el mismo gesto del aviso unos segundos y después vuelve
-a lo que corresponda.
+a lo que corresponda (con «Gesto de los avisos» encendido).
 
 En los avisos asoma desde abajo (de la cabeza al ruedo). En el escritorio vive en una ventana sin
 marco ni fondo, siempre encima, que no quita el foco: se arrastra para moverla, sin salirse de la
@@ -99,7 +129,8 @@ pantalla (la posición queda en `DesktopMascotX` y `DesktopMascotY`), y el clic 
 oculta. `ChibiDirector` decide qué hace según las sesiones, que la app sigue leyendo mientras la
 mascota esté a la vista aunque las notificaciones estén apagadas. La mascota clásica también puede
 estar en el escritorio, con los mismos movimientos armados con sus dibujos de los avisos
-(`ToastSprite.PaintMove`). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
+(`ToastSprite.PaintMove`; los gestos del flujo, en `ToastFlows`, con el objeto al costado o encima, y
+para otras herramientas martilla). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
 mascota (o abajo, si no cabe), la sigue al arrastrarla y se va a los 8 s; un clic abre lo mismo que
 el aviso.
 
@@ -129,8 +160,10 @@ La cabecera muestra siempre 3 vistas fijas (por defecto Uso, Sesiones y Activida
 tachuela abre la lista de todas: clic en el nombre la abre sin fijarla (el botón muestra su nombre
 si cabe); el pin de una vista libre la prepara y el pin de una fija hace el cambio en ese lugar,
 así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
-engranaje del pie abre **Ajustes** (notificaciones, sonido, apariencia, cuentas, inicio con el sistema, hook,
-diagnóstico); el menú del ícono queda en abrir, actualizar, nueva sesión, ajustes y salir.
+engranaje del pie abre **Ajustes**, en cinco pestañas: Avisos (notificaciones y sonido), Apariencia,
+Asistente (chat, voz y teclas), Isla y Sistema (cuentas, inicio con el sistema, hook y diagnóstico);
+la última abierta queda en `SettingsTab`. El menú del ícono queda en abrir, actualizar, nueva
+sesión, ajustes y salir.
 
 ## Flujos
 
@@ -163,6 +196,94 @@ Esas opciones valen solo para esa sesión: no tocan el `settings.json` de la cue
 `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, porque `--advisor` no acepta `off`. `--advisor` no aparece
 en `claude --help`; se comprobó con Claude Code 2.1.296. Lo último elegido se guarda en
 `settings.json` de la app (`Launch`). Los scripts están en `Core/Launcher.cs`.
+
+## Asistente: chat, isla, voz y teclas (Windows)
+
+Inspirado en [coucou](https://github.com/Louis-CFM/coucou), pero con Claude Code. Todo viene
+apagado: `Chat`, `Island` y `Mic` en el `settings.json` de la app.
+
+**Cómo responde.** Cada pregunta corre `claude -p` con la cuenta elegida (`AssistantAccount`; si no,
+la de Uso) en `…\ClaudeUsageTray\asistente`, con `--safe-mode` (sin el CLAUDE.md de la persona,
+hooks ni MCP: la entrada baja de unos 7.400 a 1.000 tokens), `--no-session-persistence` y
+`--output-format stream-json`, para mostrar la respuesta mientras llega. La pregunta va por la
+entrada estándar y el prompt de sistema en un archivo. El chat no tiene herramientas; el análisis de
+un archivo solo puede leer su carpeta (`Read`, `Glob`, `Grep`). La mascota usa `MascotModel` (Haiku,
+de entrada) y se le pide responder en 220 caracteres como mucho; la isla, `IslandModel` (vacío: el
+modelo de sus sesiones). Si la respuesta empieza con `[TAREA]`, se ofrece abrir una sesión de Claude Code con ese
+pedido en `TaskFolder`. Las consultas dejan un `sessions/<pid>.json` mientras corren; la vista
+Sesiones las ignora por su carpeta. El código está en `Core/Assistant.cs`.
+
+**La isla** (`IslandForm.cs`) es una ventana siempre oscura, con el acento de la paleta. Oculta, una
+franja invisible de 320 × 6 px en el centro del borde de arriba la hace asomar compacta (300 × 36);
+con el cursor encima (o un clic, según `IslandHover`) se abre con Inicio (las sesiones y sus pasos,
+los cambios por archivo con su diff, ir a la terminal), Chat y «+ Sesión». Se pliega al irse el
+cursor, salvo si está fijada, se está escribiendo, hay una pregunta en curso o acaba de llegar una
+respuesta: esa queda a la vista de 5 a 15 s, según su largo. Con `IslandWhileBusy` queda compacta a
+la vista mientras alguna sesión trabaja; con `WeeklyRecap`, los lunes muestra el resumen de la
+semana.
+
+**Permisos y preguntas en la isla** (opcional, en **Ajustes › Isla**). Agrega a Claude Code el hook
+`PermissionRequest`, con un respaldo `settings.json.respaldo-<fecha>` del archivo anterior:
+
+```json
+{ "hooks": { "PermissionRequest": [ { "hooks": [ { "type": "command", "command": "\"<ruta de la app>\" --hook --permiso", "timeout": 120 } ] } ] } }
+```
+
+El hook le pasa el pedido a la app por un pipe con nombre (solo del usuario) y espera hasta 110 s.
+La respuesta es la documentada: `hookSpecificOutput.decision.behavior` `allow` o `deny` y, para una
+`AskUserQuestion`, `allow` con `updatedInput` y sus respuestas. Si la app está cerrada o nadie
+responde a tiempo, el hook no escribe nada y Claude Code pregunta en la terminal como siempre
+(`Core/Approvals.cs`).
+
+**Un archivo soltado** sobre la mascota: lo atrapa en una caja, camina hacia la isla según dónde
+esté, la lanza (`BoxFlight.cs`) y la isla muestra cómo lo abre, lo lee y lo resume, con «Preguntar
+algo más», «Copiar» y «Seguir en una sesión». La mascota cuenta lo esencial en su nubecita y vuelve
+a su lugar. Sin la isla, no camina: piensa con la caja en las manos. Se apaga con
+`AnalyzeDrops`.
+
+![La isla escuchando](docs/capturas/isla-escucha.png)
+
+**Voz** (`Voice.cs`). El micrófono se graba a 16 kHz y se pasa a texto en el equipo con
+[Whisper.net](https://github.com/sandrohanea/whisper.net) 1.9.1 y el modelo `ggml-small`
+multilingüe (488 MB, de `huggingface.co/ggerganov/whisper.cpp`). Se descarga una vez, al encender el
+micrófono; si se corta, se retoma, y solo se usa si su SHA-256 coincide. La ventana del codificador
+se ajusta al largo de lo dicho (`WithAudioContextSize`) en vez de los 30 s de siempre: una frase de
+3 s pasa a texto en menos de 1 s (antes, unos 5 s), con el mismo acierto (medido con 4 frases). Mientras
+se habla, cada 0,7 s de audio nuevo se muestra lo entendido hasta ahí. El modelo cargado ocupa unos
+850 MB de memoria y se suelta a los 3 minutos sin usarlo. Con «Leer las respuestas en voz alta», las
+lee una voz de Windows en español.
+
+| Para hablar | Qué pasa |
+|---|---|
+| Mantener la tecla (Ctrl derecho, `MicKey`) | escucha mientras está pulsada; si se pulsa otra tecla con ella, era un atajo y se cancela |
+| Tocarla dos veces, o el micrófono de la isla | escucha sin mantenerla; envía con otro toque o al callar 1,8 s; si en 8 s no se oye nada, termina («no te entendí») |
+| Esc | cancela |
+
+**Teclas** (`Hotkeys.cs`). Con el chat o la isla encendidos:
+
+| Tecla | Qué hace |
+|---|---|
+| Ctrl+Alt+Espacio (`ChatKey`) | abre el chat (en la isla, si está encendida; si no, en la nubecita) |
+| Ctrl+Alt+A | va al permiso o la pregunta pendiente |
+| Ctrl+Alt+T | trae la terminal de la sesión que trabaja o espera |
+| Ctrl+Alt+N | abre o pliega la isla |
+| Ctrl+Alt+S | silencia o vuelve a sonar |
+| Tecla Copilot (`CopilotKey`) | con el micrófono: un toque escucha (envía al callar o con otro toque), mantenerla es como la tecla para hablar; sin micrófono, abre el chat |
+
+Los Ctrl+Alt son atajos registrados (`RegisterHotKey`); si otra app ya tiene uno, la lista de
+**Atajos de teclado** lo marca «en uso». La tecla Copilot llega a Windows como **Win+Mayús+F23**; la
+app la toma con un gancho de teclado de bajo nivel (`KeyHook`) para que Copilot no se abra y, al
+soltar Win, «toca» una tecla sin uso (0xE8, como AutoHotkey) para que no se abra Inicio. Solo
+funciona con la app abierta: la opción de Windows para cambiar lo que abre esa tecla solo acepta
+apps de la Store o empaquetadas en MSIX firmado. **Grabar…** (en **Ajustes › Asistente › Teclas**)
+espera la tecla o la combinación con todas las teclas tomadas, para que Win o Copilot no hagan lo
+suyo. Las que escriben solo valen con Ctrl, Alt o Win; solas valen F13 a F24, Pausa, Bloq Despl y
+las de navegador y aplicaciones de los teclados multimedia, y para hablar también Ctrl, Alt o Mayús
+derechos. Una tecla para
+hablar grabada la toma la app como la Copilot: un toque escucha sin mantenerla.
+
+![Ajustes › Asistente, con la sección Teclas](docs/capturas/ajustes-teclas.png)
+![Grabar una tecla](docs/capturas/grabar-tecla.png)
 
 ## Avisos
 
@@ -231,7 +352,15 @@ Opciones de línea de comandos (las dos apps):
 - `--sessions`, `--activity`: abre en esa vista. `--setup`: con `--preview`, muestra el asistente.
 - `--demo`: un aviso de cada tipo.
 - `--hook`: modo hook de Claude Code; lee el evento por la entrada estándar y lo guarda.
+  `--hook --permiso`: el hook de permisos y preguntas de la isla (Windows).
 - `--diag`: el diagnóstico (lo mismo que **Copiar diagnóstico**). `--dump`: una consulta completa.
+
+Solo en Windows, para probar el asistente:
+
+- `--settings`: abre en **Ajustes**, en la última pestaña usada.
+- `--soltar <archivo>`: como si se soltara ese archivo sobre la mascota (la caja, la isla y el resumen).
+- `--hablar <archivo.wav>`: la voz entera con ese audio (16 kHz, mono, 16 bits) en vez del
+  micrófono, como si se mantuviera la tecla mientras suena. Necesita «Micrófono» encendido.
 
 ## Si no salen avisos
 
@@ -255,6 +384,12 @@ registradas y vivas, y el hook. Lo habitual:
 - Linux: Avalonia 11 necesita `libICE`, `libSM` y `fontconfig` (vienen en los escritorios
   habituales). En GNOME, el ícono de la bandeja necesita la extensión AppIndicator.
 - Windows 11 deja los íconos nuevos en el desbordamiento (^).
+- El chat, la isla, la voz y las teclas son solo de Windows por ahora; Linux y macOS, en una etapa
+  siguiente.
+- Con ruido de fondo, Whisper a veces «oye» frases que nadie dijo; las conocidas («subtítulos
+  realizados por…») se descartan.
+- La tecla Copilot se probó simulándola (Win+Mayús+F23); en algunos equipos, como los Surface, puede
+  comportarse distinto.
 
 ## Comprobar en macOS
 

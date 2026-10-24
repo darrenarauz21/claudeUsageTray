@@ -48,6 +48,7 @@ sealed class TrayController
     {
         _app = app;
         _settings = SettingsStore.Load();
+        _director.Settings = _settings;
         if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
@@ -223,11 +224,13 @@ sealed class TrayController
     /// <summary>Lo que la vista Ajustes muestra: se manda de nuevo cada vez que algo cambia.</summary>
     void PushSettings()
     {
-        var pack = Sounds.Packs.FirstOrDefault(p => p.Id == _settings.SoundPack).Label ?? _settings.SoundPack;
+        var s = _settings;
+        var pack = Sounds.Packs.FirstOrDefault(p => p.Id == s.SoundPack).Label ?? s.SoundPack;
+        var behavior = new UsageView.MascotBehavior(s.FlowGestures, s.DanceToMusic, s.NoticeGestures, s.GreetOnAppear, s.AngryOnClicks, s.SleepWithoutSessions);
         View.SetSettingsState(new UsageView.SettingsState(
-                _settings.Notifications, _settings.Sound, pack, Theme.PaletteLabel(_settings.Palette),
-                Mascots.Label(Mascots.ChoiceOf(_settings)), _settings.DesktopMascot, _settings.DesktopMascot ? _settings.Speak : null,
-                StartupRegistration.IsEnabled, _settings.Accounts.Count),
+                s.Notifications, s.Sound, pack, Theme.PaletteLabel(s.Palette),
+                Mascots.Label(Mascots.ChoiceOf(s)), s.DesktopMascot, s.DesktopMascot ? s.Speak : null, s.DesktopMascot ? behavior : null,
+                StartupRegistration.IsEnabled, s.Accounts.Count),
             _settings.SoundPack, _settings.Palette, Mascots.ChoiceOf(_settings));
     }
 
@@ -245,6 +248,15 @@ sealed class TrayController
                 case "startup": ToggleStartup(); break;
                 case "desk": ToggleDesktopMascot(); break;
                 case "speak": ToggleSpeak(); break;
+                case "flowgest": Flip(s => s.FlowGestures = !s.FlowGestures); break;
+                case "music": Flip(s => s.DanceToMusic = !s.DanceToMusic); break;
+                case "noticegest": Flip(s => s.NoticeGestures = !s.NoticeGestures); break;
+                case "greet": Flip(s => s.GreetOnAppear = !s.GreetOnAppear); break;
+                case "angry": Flip(s => s.AngryOnClicks = !s.AngryOnClicks); break;
+                case "sleep":
+                    Flip(s => s.SleepWithoutSessions = !s.SleepWithoutSessions);
+                    _ = ScanSessionsAsync(); // para que se duerma o se despierte ya
+                    break;
                 case "sample": ShowNextSample(); break;
                 case "sounds": Sounds.EnsureDefaults(); Gfx.OpenFolder(Sounds.Folder); break;
                 case "add": await AddAccountAsync(); break;
@@ -344,6 +356,14 @@ sealed class TrayController
         if (!_settings.Speak) _bubble.Hide();
     }
 
+    /// <summary>Un interruptor de la mascota: se guarda y la música se mira solo si hace falta.</summary>
+    void Flip(Action<AppSettings> flip)
+    {
+        flip(_settings);
+        SettingsStore.Save(_settings);
+        Music.Watch(_settings.DesktopMascot && _settings.DanceToMusic);
+    }
+
     /// <summary>
     /// La mascota del escritorio está si no se ocultó; si cambia de mascota (chibi o clásica), la
     /// ventana se rehace con la nueva.
@@ -351,6 +371,7 @@ sealed class TrayController
     void UpdateMascotWindow()
     {
         var wanted = _settings.DesktopMascot;
+        Music.Watch(wanted && _settings.DanceToMusic); // la música solo se mira si hay mascota que baile
         if (_mascotWindow is { } current && (!wanted || current.Chibi != Mascots.IsChibi))
         {
             _bubble.Hide();

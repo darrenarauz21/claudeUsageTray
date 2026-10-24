@@ -53,9 +53,59 @@ sealed class AppSettings
     public bool DesktopMascot { get; set; }
     /// <summary>«Hablar»: la mascota del escritorio cuenta los avisos en una nubecita, además del aviso de siempre.</summary>
     public bool Speak { get; set; } = true;
+    /// <summary>La mascota del escritorio muestra lo que hace la sesión (leer, buscar, editar…); si no, baila mientras trabaja.</summary>
+    public bool FlowGestures { get; set; } = true;
+    /// <summary>Con algo sonando en el control multimedia: cabecea mientras trabaja y baila si no hay trabajo.</summary>
+    public bool DanceToMusic { get; set; } = true;
+    /// <summary>Festeja, se marea o baila chachachá cuando llega un aviso.</summary>
+    public bool NoticeGestures { get; set; } = true;
+    /// <summary>Saluda con la mano al aparecer en el escritorio.</summary>
+    public bool GreetOnAppear { get; set; } = true;
+    /// <summary>Puchero, brazos cruzados y furia con muchos clics seguidos; si no, siempre saluda.</summary>
+    public bool AngryOnClicks { get; set; } = true;
+    /// <summary>Se duerme sin sesiones abiertas; si no, se queda quieta.</summary>
+    public bool SleepWithoutSessions { get; set; } = true;
     /// <summary>Dónde quedó la ventana de la mascota al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
     public int? DesktopMascotX { get; set; }
     public int? DesktopMascotY { get; set; }
+    /// <summary>Tamaño de la mascota del escritorio (MascotSizes).</summary>
+    public string MascotSize { get; set; } = MascotSizes.Normal;
+    /// <summary>La última pestaña abierta de Ajustes.</summary>
+    public string SettingsTab { get; set; } = "Avisos";
+
+    /// <summary>Chat con la mascota: el clic del saludo abre un campo en la nubecita.</summary>
+    public bool Chat { get; set; }
+    /// <summary>Modelo de la mascota (alias de Claude Code): uno liviano, para respuestas cortas.</summary>
+    public string MascotModel { get; set; } = "haiku";
+    /// <summary>Modelo de la isla; null: el de sus sesiones (Claude Code usa el predeterminado de la cuenta).</summary>
+    public string? IslandModel { get; set; }
+    /// <summary>Cuenta que responde el chat (su carpeta de configuración); null: la elegida en Uso.</summary>
+    public string? AssistantAccount { get; set; }
+    /// <summary>Carpeta donde se abren las tareas que se le piden a la mascota; null: la última de «Nueva sesión».</summary>
+    public string? TaskFolder { get; set; }
+    /// <summary>Un archivo soltado sobre la mascota o la isla se analiza.</summary>
+    public bool AnalyzeDrops { get; set; } = true;
+    /// <summary>Hablarle con el micrófono (mantener MicKey).</summary>
+    public bool Mic { get; set; }
+    /// <summary>La tecla para hablar: una que se mantiene (nombre de System.Windows.Forms.Keys) o una combinación grabada (MicKeys).</summary>
+    public string MicKey { get; set; } = "RControlKey";
+    /// <summary>El atajo que abre el chat (KeyNames: «Ctrl+Alt+Space»).</summary>
+    public string ChatKey { get; set; } = KeyNames.DefaultChat;
+    /// <summary>La tecla Copilot (Win+Mayús+F23) abre el chat y escucha, en vez de abrir Copilot.</summary>
+    public bool CopilotKey { get; set; } = true;
+    /// <summary>Leer las respuestas en voz alta con una voz del sistema.</summary>
+    public bool ReadAloud { get; set; }
+
+    /// <summary>La isla del borde de arriba de la pantalla.</summary>
+    public bool Island { get; set; }
+    /// <summary>La isla se abre con el cursor encima (si no, con un clic).</summary>
+    public bool IslandHover { get; set; } = true;
+    /// <summary>La isla queda compacta a la vista mientras una sesión trabaja o espera.</summary>
+    public bool IslandWhileBusy { get; set; } = true;
+    /// <summary>El resumen de la semana, los lunes, en la isla.</summary>
+    public bool WeeklyRecap { get; set; } = true;
+    /// <summary>El lunes del último resumen semanal mostrado.</summary>
+    public DateOnly? RecapShown { get; set; }
     /// <summary>El asistente de configuración ya se mostró una vez.</summary>
     public bool SetupDone { get; set; }
     /// <summary>Lo último elegido en «Nueva sesión».</summary>

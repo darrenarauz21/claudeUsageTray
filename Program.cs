@@ -20,7 +20,7 @@ static class Program
 
         // --hook: lo ejecuta Claude Code (hook Notification); guarda el evento y termina.
         if (args.Contains("--hook"))
-            return NoticeDetector.RunHook();
+            return args.Contains("--permiso") ? Approvals.RunHook() : NoticeDetector.RunHook();
 
         // --preview: abre la ventana aunque ya haya otra instancia (para probar cambios).
         var preview = args.Contains("--preview");
@@ -29,9 +29,16 @@ static class Program
             return 0;
 
         ApplicationConfiguration.Initialize();
+        // Un error inesperado queda anotado (y la app sigue, si puede): sirve para el diagnóstico.
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => ErrorLog.Write(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => ErrorLog.Write(e.ExceptionObject as Exception);
         Application.Run(new TrayApp(showOnStart: preview || args.Contains("--show"), sessionsView: args.Contains("--sessions"),
-            activityView: args.Contains("--activity"), demo: args.Contains("--demo"),
-            autoSetup: !preview || args.Contains("--setup")));
+            activityView: args.Contains("--activity"), settingsView: args.Contains("--settings"), demo: args.Contains("--demo"),
+            autoSetup: !preview || args.Contains("--setup"), preview: preview,
+            demoDrop: Array.IndexOf(args, "--soltar") is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null,
+            // --hablar archivo.wav: la voz entera con ese audio en vez del micrófono (con «Micrófono» encendido).
+            demoVoice: Array.IndexOf(args, "--hablar") is var v and >= 0 && v + 1 < args.Length ? args[v + 1] : null));
         return 0;
     }
 }

@@ -10,9 +10,16 @@ sealed partial class UsageView
 {
     static readonly View[] Selectable = [View.Usage, View.Sessions, View.Activity, View.Flows];
 
-    /// <summary>Lo que muestra «Ajustes»; lo manda TrayController cada vez que cambia algo. Speak es null si la mascota no está en el escritorio.</summary>
+    /// <summary>
+    /// Lo que muestra «Ajustes»; lo manda TrayController cada vez que cambia algo. Speak y Behavior son
+    /// null si la mascota no está en el escritorio.
+    /// </summary>
     public sealed record SettingsState(bool Notifications, bool Sound, string SoundPack, string Palette,
-        string Mascot, bool DesktopMascot, bool? Speak, bool StartWithSystem, int Accounts);
+        string Mascot, bool DesktopMascot, bool? Speak, MascotBehavior? Behavior, bool StartWithSystem, int Accounts);
+
+    /// <summary>Un interruptor por comportamiento de la mascota del escritorio.</summary>
+    public sealed record MascotBehavior(bool FlowGestures, bool DanceToMusic, bool NoticeGestures, bool GreetOnAppear,
+        bool AngryOnClicks, bool SleepWithoutSessions);
 
     readonly List<View> _pinned = [View.Usage, View.Sessions, View.Activity];
     bool _viewMenuOpen;
@@ -20,7 +27,7 @@ sealed partial class UsageView
     View? _replacing;
     View _beforeSettings = View.Usage;
     Rect _selectorBounds;
-    SettingsState _settingsState = new(true, true, "", "", "", false, null, false, 0);
+    SettingsState _settingsState = new(true, true, "", "", "", false, null, null, false, 0);
     string _soundPackId = "", _paletteId = "", _mascotId = "";
 
     static string ViewLabel(View view) => view switch
@@ -200,6 +207,16 @@ sealed partial class UsageView
         y = ChoiceRow(dc, "Color", "palette", s.Palette, y, swatch: _t.Accent);
         y = ChoiceRow(dc, "Mascota", "mascot", s.Mascot, y);
         y = SwitchRow(dc, "Mascota en el escritorio", "desk", s.DesktopMascot, y);
+        if (s.Behavior is { } b)
+        {
+            y = SwitchRow(dc, "Gestos del flujo (lo que hace la sesión)", "flowgest", b.FlowGestures, y);
+            // La música sale del control multimedia de Windows; en Linux y macOS todavía no se detecta.
+            if (OperatingSystem.IsWindows()) y = SwitchRow(dc, "Bailar con música", "music", b.DanceToMusic, y);
+            y = SwitchRow(dc, "Gesto de los avisos", "noticegest", b.NoticeGestures, y);
+            y = SwitchRow(dc, "Saludar al aparecer", "greet", b.GreetOnAppear, y);
+            y = SwitchRow(dc, "Enojarse con muchos clics", "angry", b.AngryOnClicks, y);
+            y = SwitchRow(dc, "Dormir sin sesiones", "sleep", b.SleepWithoutSessions, y);
+        }
         if (s.Speak is { } speak) y = SwitchRow(dc, "Hablar (los avisos en una nubecita)", "speak", speak, y);
 
         y = SettingsCaption(dc, "Cuentas", y + 10);
