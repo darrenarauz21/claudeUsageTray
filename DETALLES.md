@@ -399,6 +399,8 @@ Solo en Windows, para probar el asistente:
 - `--soltar <archivo>`: como si se soltara ese archivo sobre la mascota (la caja, la isla y el resumen).
 - `--hablar <archivo.wav>`: la voz entera con ese audio (16 kHz, mono, 16 bits) en vez del
   micrófono, como si se mantuviera la tecla mientras suena. Necesita «Micrófono» encendido.
+- `--transcribir <archivo.wav>`: solo lo pasa a texto, como el micrófono, y escribe qué entendió y en
+  cuánto. Sirve para comprobar que el paquete de un solo archivo encuentra las DLL de Whisper.
 - `--accion <acción> <valor>`: hace esa acción de la mascota sin pasar por Claude (por ejemplo,
   `--accion volumen 30`) y escribe «listo» o lo que falló.
 - `--descargar-voz`: baja la voz de Claupet como desde **Ajustes**, con el avance.

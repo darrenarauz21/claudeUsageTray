@@ -52,6 +52,18 @@ static class Program
             return 0;
         }
 
+        // --transcribir archivo.wav (16 kHz, mono, 16 bits): lo pasa a texto como el micrófono, con el modelo ya descargado.
+        if (Array.IndexOf(args, "--transcribir") is var w and >= 0 && w + 1 < args.Length)
+        {
+            if (!VoiceModel.Ready) { Console.WriteLine("Falta descargar el modelo del micrófono (Ajustes › Asistente)."); return 1; }
+            if (Transcriber.ReadWav(File.ReadAllBytes(args[w + 1])) is not { } pcm) { Console.WriteLine("El WAV no tiene audio."); return 1; }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var transcriber = new Transcriber();
+            var heard = transcriber.TranscribeAsync(pcm).GetAwaiter().GetResult();
+            Console.WriteLine($"«{heard}» en {clock.ElapsedMilliseconds} ms");
+            return heard.Length > 0 ? 0 : 1;
+        }
+
         // --diag: el mismo resumen que «Copiar diagnóstico», a la salida estándar.
         if (args.Contains("--diag"))
         {

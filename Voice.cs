@@ -314,6 +314,17 @@ sealed class Transcriber : IDisposable
 
     static int Threads => Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
 
+    /// <summary>Las muestras de un WAV de 16 kHz, mono y 16 bits (--hablar y --transcribir); null si no tiene datos.</summary>
+    public static short[]? ReadWav(byte[] bytes)
+    {
+        var at = 12; // después de «RIFF», el largo y «WAVE»: los trozos, hasta «data»
+        while (at + 8 <= bytes.Length && Encoding.ASCII.GetString(bytes, at, 4) != "data") at += 8 + BitConverter.ToInt32(bytes, at + 4);
+        if (at + 8 > bytes.Length) return null;
+        var pcm = new short[Math.Min(BitConverter.ToInt32(bytes, at + 4), bytes.Length - at - 8) / 2];
+        Buffer.BlockCopy(bytes, at + 8, pcm, 0, pcm.Length * 2);
+        return pcm;
+    }
+
     /// <summary>Carga el modelo (tarda un poco): se llama al empezar a escuchar, mientras la persona habla.</summary>
     public Task WarmAsync() => Task.Run(Factory);
 
@@ -322,8 +333,23 @@ sealed class Transcriber : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_factory is null) FindNativeLibraries();
             return _factory ??= WhisperFactory.FromPath(_model);
         }
+    }
+
+    /// <summary>
+    /// En el paquete de un solo archivo, las DLL de Whisper se extraen a %TEMP%\.net\…\runtimes\win-x64 y
+    /// Whisper.net solo las busca junto al exe. Se le indica la carpeta de extracción: toma la carpeta de
+    /// LibraryPath y le suma runtimes\win-x64, así que basta un nombre de archivo dentro de ella.
+    /// </summary>
+    static void FindNativeLibraries()
+    {
+        if (Directory.Exists(Path.Combine(AppContext.BaseDirectory, "runtimes"))) return;
+        var extracted = (AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(d => Directory.Exists(Path.Combine(d, "runtimes")));
+        if (extracted is not null) Whisper.net.LibraryLoader.RuntimeOptions.LibraryPath = Path.Combine(extracted, "whisper.dll");
     }
 
     /// <summary>El texto de lo grabado; vacío si no hubo voz (o solo se «oyó» una frase fantasma).</summary>
@@ -751,12 +777,7 @@ sealed class VoiceInput : IDisposable
     /// </summary>
     public async Task DemoAsync(string wav)
     {
-        var bytes = await File.ReadAllBytesAsync(wav);
-        var at = 12; // después de «RIFF», el largo y «WAVE»: los trozos, hasta «data»
-        while (at + 8 <= bytes.Length && Encoding.ASCII.GetString(bytes, at, 4) != "data") at += 8 + BitConverter.ToInt32(bytes, at + 4);
-        if (at + 8 > bytes.Length) return;
-        var pcm = new short[Math.Min(BitConverter.ToInt32(bytes, at + 4), bytes.Length - at - 8) / 2];
-        Buffer.BlockCopy(bytes, at + 8, pcm, 0, pcm.Length * 2);
+        if (Transcriber.ReadWav(await File.ReadAllBytesAsync(wav)) is not { } pcm) return;
         _mic.Fake = pcm;
         _key.Hold();
         await Task.Delay(pcm.Length / 16 + 400);
