@@ -39,6 +39,31 @@ static class Music
         Wake.Set();
     }
 
+    /// <summary>
+    /// Si algo suena ahora, preguntado una vez en un hilo propio (para pausar o seguir sin adivinar,
+    /// porque la tecla multimedia solo alterna); null si no se pudo saber. Puede tardar hasta 5 s.
+    /// </summary>
+    public static bool? PlayingNow()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        bool? result = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                RoInitialize(1);
+                var manager = RequestManager();
+                if (manager == IntPtr.Zero) return;
+                try { result = AnyPlaying(manager); }
+                finally { Marshal.Release(manager); }
+            }
+            catch (Exception) { }
+        }) { IsBackground = true, Name = "Música, una vez" };
+        thread.Start();
+        thread.Join(6000);
+        return result;
+    }
+
     static void Loop()
     {
         RoInitialize(1); // multihilo

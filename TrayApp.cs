@@ -886,7 +886,7 @@ sealed class TrayApp : ApplicationContext
     {
         var label = _settings.IslandModel is { } model
             ? AssistantModels.Label(model)
-            : (_defaultModel is { } known ? $"{known} · el de sus sesiones" : "El de sus sesiones");
+            : _defaultModel ?? AssistantModels.Label(null);
         var account = AssistantConfigDir is { } dir ? _settings.Accounts.FirstOrDefault(a => Account.SamePath(a.ConfigDir, dir))?.Label ?? "" : "";
         _island?.SetModel(label, account);
     }
@@ -946,25 +946,41 @@ sealed class TrayApp : ApplicationContext
         }
         else
         {
-            _chat.Add(new ChatTurn(false, result.Text));
-            ReadAloudIfOn(result.Text);
+            var answer = await RunActionAsync(result);
+            if (cancel.IsCancellationRequested) return;
+            _chat.Add(new ChatTurn(false, answer));
+            ReadAloudIfOn(answer);
         }
         PushIslandChat(false);
     }
 
-    /// <summary>Una tarea pedida en la isla: la mascota la ofrece en su nubecita; sin mascota, se pregunta aquí.</summary>
+    /// <summary>
+    /// Si la respuesta pide una acción en el equipo, la hace: devuelve lo que dijo Claude o, si la
+    /// acción falló, lo que pasó.
+    /// </summary>
+    async Task<string> RunActionAsync(AssistantResult result)
+    {
+        if (result.Action is not { } action) return result.Text;
+        var problem = await SystemActions.RunAsync(action, SetPalette);
+        return problem is null ? (result.Text.Length > 0 ? result.Text : "¡Listo! (^_^)") : $"{problem} (._.)";
+    }
+
+    /// <summary>El nombre de la carpeta donde se abriría una tarea, para la nubecita.</summary>
+    static string FolderLabel(string? folder) => folder is null ? "una carpeta" : Path.GetFileName(folder.TrimEnd('\\', '/'));
+
+    /// <summary>Una tarea pedida en la isla (o un archivo que hay que encargar): la mascota la ofrece en su nubecita; sin mascota, se pregunta aquí.</summary>
     void OfferTask(TaskProposal task)
     {
         if (_mascotWindow is { } mascot)
         {
             _pendingTask = task;
             ChatBubbleFor().Say(mascot.Bounds, "");
-            _chatBubble!.Finish("", island: false, task.Prompt, TaskFolderPath is { } f ? Path.GetFileName(f.TrimEnd('\\', '/')) : "una carpeta");
+            _chatBubble!.Finish("", island: false, task.Prompt, FolderLabel(task.Folder ?? TaskFolderPath));
             _director.SetMood(ChibiMove.Think);
             return;
         }
-        var folder = TaskFolderPath;
-        var where = folder is null ? "una carpeta que elija" : $"«{Path.GetFileName(folder.TrimEnd('\\', '/'))}»";
+        var folder = task.Folder ?? TaskFolderPath;
+        var where = folder is null ? "una carpeta que elija" : $"«{FolderLabel(folder)}»";
         if (MessageBox.Show($"¿Abro Claude Code en {where} con esta tarea?\n\n«{task.Prompt}»", "Uso de Claude",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         if (folder is null)
@@ -1019,6 +1035,12 @@ sealed class TrayApp : ApplicationContext
         }
         _lastAnalysis = result.Failed ? null : result.Text;
         _lastAnalysisFile = file;
+        // No lo pudo abrir (un Excel, por ejemplo): se lo encarga a una sesión en la carpeta del archivo.
+        if (result.Task is { } task)
+        {
+            OfferTask(task);
+            return;
+        }
         if (_mascotWindow is { } mascot)
         {
             var line = result.Failed ? $"{result.Error} (._.)" : island is null ? result.Text : result.Short ?? result.Text;
@@ -1269,20 +1291,22 @@ sealed class TrayApp : ApplicationContext
         {
             _chat.Add(new ChatTurn(false, $"(Propuse abrir una sesión de Claude Code con: {task.Prompt})"));
             _pendingTask = task;
-            bubble.Finish("", _settings.Island, task.Prompt, TaskFolderPath is { } folder ? Path.GetFileName(folder.TrimEnd('\\', '/')) : "una carpeta");
+            bubble.Finish("", _settings.Island, task.Prompt, FolderLabel(TaskFolderPath));
             _director.SetMood(ChibiMove.Think);
             return;
         }
-        _chat.Add(new ChatTurn(false, result.Text));
-        bubble.Finish(result.Text, _settings.Island);
-        ReadAloudIfOn(result.Text);
+        var answer = await RunActionAsync(result);
+        if (cancel.IsCancellationRequested || bubble.IsDisposed) return;
+        _chat.Add(new ChatTurn(false, answer));
+        bubble.Finish(answer, _settings.Island);
+        ReadAloudIfOn(answer);
     }
 
-    /// <summary>La tarea que propuso: se abre en la carpeta de las tareas o en otra que se elija.</summary>
+    /// <summary>La tarea que propuso: se abre en su carpeta (la del archivo, si vino de uno), en la de las tareas o en otra que se elija.</summary>
     void OnTaskChosen(bool here)
     {
         if (_pendingTask is not { } task || _mascotWindow is not { } mascot || _chatBubble is not { } bubble) return;
-        var folder = here ? TaskFolderPath : null;
+        var folder = here ? task.Folder ?? TaskFolderPath : null;
         if (folder is null)
         {
             bubble.HoldOpen = true;

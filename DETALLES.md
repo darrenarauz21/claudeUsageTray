@@ -162,7 +162,8 @@ si cabe); el pin de una vista libre la prepara y el pin de una fija hace el camb
 así nunca hay más ni menos de 3. Se guardan en `PinnedViews` del `settings.json` de la app. El
 engranaje del pie abre **Ajustes**, en cinco pestañas: Avisos (notificaciones y sonido), Apariencia,
 Asistente (chat, voz y teclas), Isla y Sistema (cuentas, inicio con el sistema, hook y diagnóstico);
-la última abierta queda en `SettingsTab`. El menú del ícono queda en abrir, actualizar, nueva
+la última abierta queda en `SettingsTab`. Todas miden lo que la más alta (con lo que esté
+encendido), así que al cambiar de pestaña el cuadro no cambia de tamaño. El menú del ícono queda en abrir, actualizar, nueva
 sesión, ajustes y salir.
 
 ## Flujos
@@ -206,12 +207,31 @@ apagado: `Chat`, `Island` y `Mic` en el `settings.json` de la app.
 la de Uso) en `…\ClaudeUsageTray\asistente`, con `--safe-mode` (sin el CLAUDE.md de la persona,
 hooks ni MCP: la entrada baja de unos 7.400 a 1.000 tokens), `--no-session-persistence` y
 `--output-format stream-json`, para mostrar la respuesta mientras llega. La pregunta va por la
-entrada estándar y el prompt de sistema en un archivo. El chat no tiene herramientas; el análisis de
-un archivo solo puede leer su carpeta (`Read`, `Glob`, `Grep`). La mascota usa `MascotModel` (Haiku,
-de entrada) y se le pide responder en 220 caracteres como mucho; la isla, `IslandModel` (vacío: el
-modelo de sus sesiones). Si la respuesta empieza con `[TAREA]`, se ofrece abrir una sesión de Claude Code con ese
-pedido en `TaskFolder`. Las consultas dejan un `sessions/<pid>.json` mientras corren; la vista
-Sesiones las ignora por su carpeta. El código está en `Core/Assistant.cs`.
+entrada estándar y el prompt de sistema en un archivo. El chat solo puede buscar en internet
+(`WebSearch` y `WebFetch`; el clima sale de `wttr.in`); el análisis de un archivo solo puede leer su
+carpeta (`Read`, `Glob`, `Grep`). La mascota usa `MascotModel` (Haiku, de entrada) y se le pide
+responder en 220 caracteres como mucho; la isla, `IslandModel` (vacío: el modelo de sus sesiones).
+La primera línea de la respuesta puede traer una marca, que no se muestra:
+
+| Marca | Qué pasa |
+|---|---|
+| `[ACCION] {"accion":"…","valor":"…"}` | la app hace esa acción en el equipo (tabla de abajo) y la mascota dice la frase que sigue, o lo que falló |
+| `[TAREA] <pedido>` | lo que Claude no puede hacer con sus herramientas ni con las acciones: se ofrece abrir una sesión de Claude Code con ese pedido, en `TaskFolder` o, si vino de un archivo soltado que no pudo abrir (un Excel, por ejemplo), en la carpeta del archivo |
+
+Las acciones son una lista cerrada (`SystemActions.cs`), para que una frase mal entendida no pueda
+hacer otra cosa; lo demás se encarga a Claude Code:
+
+| Acción | Valor | Cómo |
+|---|---|---|
+| `fondo` | ruta de una imagen o URL https de un JPEG, PNG o BMP (hasta 25 MB) | `SystemParametersInfo`; las bajadas quedan en `…\ClaudeUsageTray\fondos` (las 5 últimas) |
+| `tema` | `claro` u `oscuro` | `AppsUseLightTheme` y `SystemUsesLightTheme` del registro, y aviso a las ventanas |
+| `color` | una paleta de la app | como elegirla en **Ajustes** |
+| `volumen` | 0 a 100, `subir`, `bajar` (de a 10), `silenciar` o `activar` | Core Audio, en la salida predeterminada |
+| `musica` | `reproducir`, `pausar`, `siguiente` o `anterior` | teclas multimedia; antes de reproducir o pausar mira si algo suena (`Music.PlayingNow`) |
+| `abrir` | URL `https`, `http`, `spotify:` o `ms-settings:`, o el nombre de una app del menú Inicio | se abre con el programa de Windows; las apps, por su acceso directo |
+
+Las consultas dejan un `sessions/<pid>.json` mientras corren; la vista Sesiones las ignora por su
+carpeta. El código está en `Core/Assistant.cs`.
 
 **La isla** (`IslandForm.cs`) es una ventana siempre oscura, con el acento de la paleta. Oculta, una
 franja invisible de 320 × 6 px en el centro del borde de arriba la hace asomar compacta (300 × 36);
@@ -361,6 +381,8 @@ Solo en Windows, para probar el asistente:
 - `--soltar <archivo>`: como si se soltara ese archivo sobre la mascota (la caja, la isla y el resumen).
 - `--hablar <archivo.wav>`: la voz entera con ese audio (16 kHz, mono, 16 bits) en vez del
   micrófono, como si se mantuviera la tecla mientras suena. Necesita «Micrófono» encendido.
+- `--accion <acción> <valor>`: hace esa acción de la mascota sin pasar por Claude (por ejemplo,
+  `--accion volumen 30`) y escribe «listo» o lo que falló.
 
 ## Si no salen avisos
 

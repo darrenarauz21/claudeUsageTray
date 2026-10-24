@@ -334,11 +334,25 @@ sealed partial class UsageForm
         return bar.Bottom + S(12);
     }
 
+    /// <summary>
+    /// Todas las pestañas ocupan lo que la más alta (con lo que esté encendido): al cambiar de pestaña
+    /// solo se desliza el contenido y el cuadro no cambia de tamaño. Las demás se miden sin dejar hits.
+    /// </summary>
     int ComposeSettings(Graphics g, bool draw, int y)
     {
-        var s = _settingsState;
         y = ComposeSettingsTabs(g, draw, y);
-        switch (_settingsTab)
+        var bottom = ComposeSettingsTab(g, draw, _settingsTab, y);
+        var hits = _hits.Count;
+        foreach (var tab in AllTabs)
+            if (tab != _settingsTab) bottom = Math.Max(bottom, ComposeSettingsTab(g, false, tab, y));
+        _hits.RemoveRange(hits, _hits.Count - hits);
+        return bottom + S(14);
+    }
+
+    int ComposeSettingsTab(Graphics g, bool draw, SettingsTab tab, int y)
+    {
+        var s = _settingsState;
+        switch (tab)
         {
             case SettingsTab.Avisos:
                 y = SwitchRow(g, draw, "Notificaciones", "notify", s.Notifications, y);
@@ -360,7 +374,6 @@ sealed partial class UsageForm
                     y = SwitchRow(g, draw, "Enojarse con muchos clics", "angry", s.AngryOnClicks, y);
                     y = SwitchRow(g, draw, "Dormir sin sesiones", "sleep", s.SleepWithoutSessions, y);
                     y = SwitchRow(g, draw, "Hablar (los avisos en una nubecita)", "speak", s.Speak, y);
-                    if (s.DanceToMusic) y = HintRow(g, draw, "La música es lo que suene en el control multimedia de Windows: Spotify, YouTube en el navegador…", y + S(4));
                 }
                 break;
             case SettingsTab.Asistente:
@@ -388,7 +401,6 @@ sealed partial class UsageForm
                     y = SwitchRow(g, draw, s.Mic ? "Tecla Copilot: chat y voz" : "Tecla Copilot: abre el chat", "copilot", s.CopilotKey, y);
                     y = LinkRow(g, draw, "Atajos de teclado", "Ver…", "shortcuts", _t.Accent, y);
                 }
-                y = HintRow(g, draw, "Responde con Claude Code y gasta del plan de la cuenta elegida. La voz se pasa a texto en este equipo.", y + S(4));
                 break;
             case SettingsTab.Isla:
                 y = SwitchRow(g, draw, "Isla en el borde de arriba", "island", s.Island, y);
@@ -410,21 +422,13 @@ sealed partial class UsageForm
                 y = LinkRow(g, draw, "Quitar hook e inicio con Windows", "Quitar…", "unsetup", _t.Danger, y);
                 break;
         }
-        return y + S(14);
+        return y;
     }
 
     int SettingsCaption(Graphics g, bool draw, string text, int y)
     {
         if (draw) Write(g, text.ToUpperInvariant(), _small, _t.Tertiary, new Rectangle(Pad, y, Inner, _small.Height));
         return y + _small.Height + S(6);
-    }
-
-    int HintRow(Graphics g, bool draw, string text, int y)
-    {
-        var flags = TextFormatFlags.NoPadding | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
-        var height = TextRenderer.MeasureText(g, text, _small, new Size(Inner, 0), flags).Height;
-        if (draw) TextRenderer.DrawText(g, text, _small, new Rectangle(Pad, y, Inner, height), _t.Tertiary, flags);
-        return y + height + S(4);
     }
 
     /// <summary>Un interruptor: la perilla se desliza y el color cambia al encenderlo o apagarlo.</summary>

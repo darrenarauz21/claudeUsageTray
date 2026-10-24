@@ -9,6 +9,15 @@ static class Program
         if (args.Contains("--dump"))
             return Dump.Run();
 
+        // --accion <acción> <valor>: hace esa acción de la mascota, sin pasar por Claude, y dice cómo le fue.
+        if (Array.IndexOf(args, "--accion") is var a and >= 0 && a + 2 < args.Length)
+        {
+            var problem = SystemActions.RunAsync(new AssistantAction(args[a + 1], args[a + 2]),
+                palette => Console.WriteLine($"color de la app: {palette}")).GetAwaiter().GetResult();
+            Console.WriteLine(problem ?? "listo");
+            return problem is null ? 0 : 1;
+        }
+
         // --diag: el mismo resumen que «Copiar diagnóstico», a la salida estándar.
         if (args.Contains("--diag"))
         {
