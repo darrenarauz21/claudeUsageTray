@@ -273,7 +273,8 @@ se ajusta al largo de lo dicho (`WithAudioContextSize`) en vez de los 30 s de si
 se habla, cada 0,7 s de audio nuevo se muestra lo entendido hasta ahí. El modelo cargado ocupa unos
 850 MB de memoria y se suelta a los 3 minutos sin usarlo.
 
-**La voz de Claupet** (`Supertonic.cs`, `ClaupetVoice.cs`). Con «Leer las respuestas en voz alta», las
+**La voz de Claupet** (`Supertonic.cs`, `ClaupetVoice.cs`). Con «Leer las respuestas en voz alta» (no necesita el
+micrófono: también lee lo que responde a un mensaje escrito), las
 lee [Supertonic 3](https://github.com/supertone-inc/supertonic) en el equipo, con ONNX Runtime 1.20.1
 en la CPU: la voz femenina (F4) o la masculina (M1), en `ReadAloudVoice`. El texto entra tal cual, sin
 pasar a fonemas. La inferencia está adaptada de su ejemplo en C# (MIT); el modelo es OpenRAIL-M y su

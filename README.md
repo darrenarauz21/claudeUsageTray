@@ -119,7 +119,8 @@ gasta de su plan, como cualquier mensaje.
 - **Con la voz:** mantenga **Ctrl derecho**, hable y suelte; o tóquelo dos veces y hable sin
   mantenerlo. La voz se pasa a texto en su equipo: la primera vez se descarga el modelo (488 MB).
 - **Su voz:** con «Leer las respuestas en voz alta», Claupet responde con su propia voz, femenina o
-  masculina, y a veces se ríe o suspira. Corre en su equipo: la primera vez se descarga (unos 400 MB).
+  masculina, y a veces se ríe o suspira; también si usted le escribe, sin el micrófono. Corre en su
+  equipo: la primera vez se descarga (unos 400 MB).
 - **Teclas:** **Ctrl+Alt+Espacio** abre el chat. Si su teclado tiene la **tecla Copilot**, con un
   toque la mascota le escucha (o se abre el chat, si el micrófono está apagado), y Copilot no se
   abre. Las dos se pueden cambiar en **Ajustes › Asistente › Teclas**, con «Grabar…».

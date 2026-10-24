@@ -775,7 +775,7 @@ sealed class TrayApp : ApplicationContext
     /// <summary>Lee la respuesta en voz alta, si se pidió (Ajustes › Asistente › Voz).</summary>
     void ReadAloudIfOn(string text)
     {
-        if (_settings.Mic && _settings.ReadAloud && text.Length > 0) (_readAloud ??= new ReadAloud()).Say(text, _settings.ReadAloudVoice);
+        if (_settings.ReadAloud && text.Length > 0) (_readAloud ??= new ReadAloud()).Say(text, _settings.ReadAloudVoice);
     }
 
     /// <summary>
@@ -786,7 +786,7 @@ sealed class TrayApp : ApplicationContext
         ReadAloudIfOn(shown == result.Text && result.Spoken is { } spoken ? spoken : shown);
 
     /// <summary>La respuesta se leerá con la voz de Claupet: Claude puede ponerle risas o suspiros.</summary>
-    bool Expressive => _settings.Mic && _settings.ReadAloud && ClaupetVoices.IsClaupet(_settings.ReadAloudVoice);
+    bool Expressive => _settings.ReadAloud && ClaupetVoices.IsClaupet(_settings.ReadAloudVoice);
 
     /// <summary>
     /// Los lunes (o la primera vez que la app corre en la semana), el resumen de la semana pasada en la

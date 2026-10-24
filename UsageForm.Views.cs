@@ -397,12 +397,13 @@ sealed partial class UsageForm
                 {
                     y = ChoiceRow(g, draw, "Tecla para hablar", "mickey", s.MicKey, y);
                     y = LinkRow(g, draw, s.VoiceStatus, s.VoiceAction, "voice", _t.Accent, y);
-                    y = SwitchRow(g, draw, "Leer las respuestas en voz alta", "readaloud", s.ReadAloud, y);
-                    if (s.ReadAloud)
-                    {
-                        y = ChoiceRow(g, draw, "Voz", "readvoice", s.ReadAloudVoice, y);
-                        if (s.SpeechStatus.Length > 0) y = LinkRow(g, draw, s.SpeechStatus, s.SpeechAction, "speech", _t.Accent, y);
-                    }
+                }
+                // Aparte del micrófono: puede escribirle y que le responda hablando.
+                y = SwitchRow(g, draw, "Leer las respuestas en voz alta", "readaloud", s.ReadAloud, y);
+                if (s.ReadAloud)
+                {
+                    y = ChoiceRow(g, draw, "Voz", "readvoice", s.ReadAloudVoice, y);
+                    if (s.SpeechStatus.Length > 0) y = LinkRow(g, draw, s.SpeechStatus, s.SpeechAction, "speech", _t.Accent, y);
                 }
                 if (s.Chat || s.Island)
                 {
