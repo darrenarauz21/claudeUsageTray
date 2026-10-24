@@ -1,4 +1,4 @@
-# Asistente Claudepet 
+# Asistente Claupet 
 
 Una pequeña app que vive junto al reloj (en la bandeja de Windows o Linux, o en la barra de menús
 de Mac) y le muestra, de un vistazo, cuánto le queda de Claude y qué están haciendo sus sesiones
