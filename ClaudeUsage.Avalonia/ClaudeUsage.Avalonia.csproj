@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>UsoDeClaude</AssemblyName>
     <RootNamespace>ClaudeUsageTray</RootNamespace>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <AssemblyTitle>Uso de Claude</AssemblyTitle>
     <Product>Uso de Claude</Product>
     <ApplicationIcon>..\app.ico</ApplicationIcon>
