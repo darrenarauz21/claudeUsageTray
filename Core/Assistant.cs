@@ -23,6 +23,20 @@ static class AssistantModels
 
 }
 
+/// <summary>Las voces para leer las respuestas: las dos de Claupet (Supertonic 3, F4 y M1) o una de Windows.</summary>
+static class ClaupetVoices
+{
+    public const string Female = "F4", Male = "M1", Windows = "windows";
+
+    public static readonly (string Id, string Label)[] Choices =
+        [(Female, "Femenina"), (Male, "Masculina"), (Windows, "La de Windows")];
+
+    public static string Label(string id) => Choices.FirstOrDefault(c => c.Id == id).Label ?? Choices[0].Label;
+
+    /// <summary>Es una voz de Claupet (necesita el modelo).</summary>
+    public static bool IsClaupet(string id) => id is Female or Male;
+}
+
 /// <summary>
 /// La tecla para hablar: una de estas, que se mantiene (nombres de System.Windows.Forms.Keys), o una tecla o
 /// combinación grabada en Ajustes («Win+Shift+F23»), que también se toca una vez para hablar sin mantenerla.
@@ -95,16 +109,73 @@ sealed record AssistantRequest
     public string? File { get; init; }
     /// <summary>Cómo se llama la mascota que responde (el chibi o la clásica), para el tono.</summary>
     public bool Chibi { get; init; } = true;
+    /// <summary>La respuesta se leerá con la voz de Claupet: puede llevar risas o suspiros (Expressions).</summary>
+    public bool Expressive { get; init; }
 }
 
 /// <summary>
-/// La respuesta terminada. Text: lo que se muestra (sin la marca de tarea). Short: la primera línea
-/// de un análisis, para la nubecita. Model: el modelo que respondió (para el chip de la isla). Action:
-/// lo que pidió hacer en el equipo; lo ejecuta la app (SystemActions).
+/// La respuesta terminada. Text: lo que se muestra (sin la marca de tarea ni las expresiones). Short: la
+/// primera línea de un análisis, para la nubecita. Model: el modelo que respondió (para el chip de la
+/// isla). Action: lo que pidió hacer en el equipo; lo ejecuta la app (SystemActions). Spoken: lo que se
+/// lee en voz alta, con las expresiones.
 /// </summary>
-sealed record AssistantResult(string Text, string? Short, string? Model, TaskProposal? Task, string? Error, AssistantAction? Action = null)
+sealed record AssistantResult(string Text, string? Short, string? Model, TaskProposal? Task, string? Error, AssistantAction? Action = null, string? Spoken = null)
 {
     public bool Failed => Error is not null;
+}
+
+/// <summary>
+/// Las expresiones que la voz de Claupet sabe hacer (etiquetas de Supertonic 3 dentro del texto): se
+/// oyen, pero no se muestran.
+/// </summary>
+static class Expressions
+{
+    public static readonly string[] Tags = ["laugh", "sigh", "breath"];
+
+    /// <summary>La etiqueta con los espacios de antes: el de después queda separando las palabras.</summary>
+    static readonly System.Text.RegularExpressions.Regex Tag =
+        new(@"[ \t]*<(?:laugh|sigh|breath)>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>El texto sin las etiquetas.</summary>
+    public static string Strip(string text) => Tag.Replace(text, "").Trim();
+
+    /// <summary>
+    /// Quita las etiquetas de un texto que llega por partes: una etiqueta puede venir partida («&lt;la» y
+    /// «ugh&gt;»), así que lo que podría ser su comienzo se guarda hasta ver cómo sigue.
+    /// </summary>
+    public sealed class Filter
+    {
+        readonly StringBuilder _pending = new();
+        bool _space = true; // lo último mostrado fue un espacio (o nada): no se repite
+
+        public string Push(string piece)
+        {
+            _pending.Append(piece);
+            var text = _pending.ToString();
+            var open = text.LastIndexOf('<');
+            var hold = open >= 0 && text.IndexOf('>', open) < 0 && text.Length - open <= 8
+                && text[(open + 1)..].All(char.IsAsciiLetterLower);
+            var ready = hold ? text[..open] : text;
+            _pending.Clear();
+            if (hold) _pending.Append(text[open..]);
+            return Clean(ready);
+        }
+
+        public string Flush()
+        {
+            var rest = _pending.ToString();
+            _pending.Clear();
+            return Clean(rest);
+        }
+
+        string Clean(string text)
+        {
+            text = Tag.Replace(text, "");
+            if (_space) text = text.TrimStart(' ');
+            if (text.Length > 0) _space = text[^1] == ' ';
+            return text;
+        }
+    }
 }
 
 /// <summary>
@@ -221,6 +292,7 @@ static class Assistant
         var shown = false;
         void Show(string piece)
         {
+            if (piece.Length == 0) return;
             if (shown) { onText?.Invoke(piece); return; }
             head.Append(piece);
             var start = head.ToString().TrimStart();
@@ -244,6 +316,8 @@ static class Assistant
             star = piece.EndsWith('*');
             return star ? piece[..^1] : piece;
         }
+        // Las risas y suspiros (<laugh>…) son para la voz: tampoco se ven.
+        var expressions = new Expressions.Filter();
         void Stage(AssistantStage s)
         {
             if (s <= stage) return;
@@ -279,7 +353,7 @@ static class Assistant
                                 if (request.File is not null && stage < AssistantStage.Reading) break;
                                 Stage(AssistantStage.Writing);
                                 text.Append(piece);
-                                Show(Plain(piece));
+                                Show(expressions.Push(Plain(piece)));
                                 break;
                         }
                         break;
@@ -294,6 +368,7 @@ static class Assistant
             }
             catch (JsonException) { }
         }
+        if (expressions.Flush() is { Length: > 0 } tail) Show(tail);
         await process.WaitForExitAsync(CancellationToken.None);
         if (cancel.IsCancellationRequested) return new AssistantResult(text.ToString(), null, model, null, "Cancelado.");
 
@@ -316,13 +391,15 @@ static class Assistant
         }
         else if (TakeMark(ref answer, ActionMark) is { } json)
             action = ParseAction(json);
+        var spoken = answer;
+        answer = Expressions.Strip(answer);
         string? brief = null;
         if (request.File is not null)
         {
             var newline = answer.IndexOf('\n');
             brief = (newline < 0 ? answer : answer[..newline]).Trim();
         }
-        return new AssistantResult(answer, brief, model, task, null, action);
+        return new AssistantResult(answer, brief, model, task, null, action, spoken);
     }
 
     /// <summary>Si la respuesta empieza con la marca, la quita junto con su línea y devuelve lo que seguía a la marca; si no, null.</summary>
@@ -380,6 +457,8 @@ static class Assistant
         else
             prompt.AppendLine("Respondes claro y breve: hasta 4 frases, o una lista corta con guiones si ayuda. En texto plano: sin títulos, negritas ni markdown.");
         prompt.AppendLine("Si no sabes algo, dilo; no inventes.");
+        if (r.Expressive)
+            prompt.AppendLine($"Tu respuesta se lee en voz alta con tu voz: si viene al caso, pon una de estas etiquetas donde se oiga, como mucho una por respuesta: {string.Join(", ", Expressions.Tags.Select(t => $"<{t}>"))} (risa, suspiro, respiración). No uses otras.");
         if (r.File is null)
         {
             prompt.AppendLine();

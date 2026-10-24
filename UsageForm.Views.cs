@@ -39,6 +39,10 @@ sealed partial class UsageForm
         public string VoiceStatus { get; init; } = "";
         public string VoiceAction { get; init; } = "";
         public bool ReadAloud { get; init; }
+        /// <summary>La voz que lee y, si es de Claupet y falta su modelo, lo que dice su fila y su enlace (vacío: sin fila).</summary>
+        public string ReadAloudVoice { get; init; } = "";
+        public string SpeechStatus { get; init; } = "";
+        public string SpeechAction { get; init; } = "";
         public bool Island { get; init; }
         public string IslandModel { get; init; } = "";
         public bool IslandHover { get; init; }
@@ -93,7 +97,8 @@ sealed partial class UsageForm
         _settingsState = state;
         if (_view != View.Settings) return;
         // Las filas que aparecen o se van (al encender el chat, la isla, el micrófono…) entran con una transición.
-        if (old.Chat != state.Chat || old.Mic != state.Mic || old.Island != state.Island || old.DesktopMascot != state.DesktopMascot || old.DanceToMusic != state.DanceToMusic)
+        if (old.Chat != state.Chat || old.Mic != state.Mic || old.Island != state.Island || old.DesktopMascot != state.DesktopMascot || old.DanceToMusic != state.DanceToMusic
+            || old.ReadAloud != state.ReadAloud || old.SpeechStatus.Length > 0 != state.SpeechStatus.Length > 0)
         {
             BeginTransition(Slide.Fade);
             Relayout();
@@ -393,6 +398,11 @@ sealed partial class UsageForm
                     y = ChoiceRow(g, draw, "Tecla para hablar", "mickey", s.MicKey, y);
                     y = LinkRow(g, draw, s.VoiceStatus, s.VoiceAction, "voice", _t.Accent, y);
                     y = SwitchRow(g, draw, "Leer las respuestas en voz alta", "readaloud", s.ReadAloud, y);
+                    if (s.ReadAloud)
+                    {
+                        y = ChoiceRow(g, draw, "Voz", "readvoice", s.ReadAloudVoice, y);
+                        if (s.SpeechStatus.Length > 0) y = LinkRow(g, draw, s.SpeechStatus, s.SpeechAction, "speech", _t.Accent, y);
+                    }
                 }
                 if (s.Chat || s.Island)
                 {

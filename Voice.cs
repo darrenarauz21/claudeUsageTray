@@ -199,61 +199,69 @@ static class VoiceModel
     public static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClaudeUsageTray", "voz", "ggml-small.bin");
 
-    static string PartPath => FilePath + ".parte";
-
     /// <summary>Ya está descargado (y no a medias).</summary>
     public static bool Ready => Length(FilePath) == Size;
 
     static long Length(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
-    /// <summary>
-    /// Lo baja a un archivo .parte y, entero y comprobado, lo deja en su lugar. Si la conexión se corta
-    /// (o se queda un minuto sin datos), retoma donde iba; también lo que quedó de una vez anterior.
-    /// Avisa el avance de 0 a 1.
-    /// </summary>
-    public static async Task DownloadAsync(IProgress<double> progress, CancellationToken cancel)
+    /// <summary>Lo baja (ver ModelDownload) y avisa el avance de 0 a 1.</summary>
+    public static Task DownloadAsync(IProgress<double> progress, CancellationToken cancel) =>
+        ModelDownload.FetchAsync(Url, FilePath, Size, Sha256, new Progress<long>(have => progress.Report((double)have / Size)), cancel);
+}
+
+/// <summary>
+/// La descarga de un archivo de modelo: a un .parte y, entero y con su SHA-256, a su lugar. Si la
+/// conexión se corta (o se queda un minuto sin datos), retoma donde iba; también lo que quedó de una
+/// vez anterior. Avisa cuántos bytes lleva.
+/// </summary>
+static class ModelDownload
+{
+    static long Length(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
+
+    public static async Task FetchAsync(string url, string path, long size, string sha256, IProgress<long> progress, CancellationToken cancel)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var part = path + ".parte";
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         var failures = 0;
-        progress.Report((double)Length(PartPath) / Size);
-        while (Length(PartPath) < Size)
+        progress.Report(Length(part));
+        while (Length(part) < size)
         {
-            var before = Length(PartPath);
-            try { await ResumeAsync(http, progress, cancel); }
+            var before = Length(part);
+            try { await ResumeAsync(http, url, part, progress, cancel); }
             catch (Exception ex) when (!cancel.IsCancellationRequested && ex is HttpRequestException or IOException or OperationCanceledException)
             {
-                failures = Length(PartPath) > before ? 1 : failures + 1;
+                failures = Length(part) > before ? 1 : failures + 1;
                 if (failures >= 8) throw new IOException("Se cortó la conexión varias veces seguidas.", ex);
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 3 * failures)), cancel);
             }
         }
-        progress.Report(1);
-        if (Length(PartPath) != Size || !await Task.Run(() => Matches(PartPath, cancel), cancel))
+        progress.Report(size);
+        if (Length(part) != size || !await Task.Run(() => Matches(part, sha256, cancel), cancel))
         {
-            File.Delete(PartPath);
+            File.Delete(part);
             throw new IOException("Lo descargado no es el modelo esperado; se borró.");
         }
-        File.Move(PartPath, FilePath, overwrite: true);
+        File.Move(part, path, overwrite: true);
     }
 
-    static async Task ResumeAsync(HttpClient http, IProgress<double> progress, CancellationToken cancel)
+    static async Task ResumeAsync(HttpClient http, string url, string part, IProgress<long> progress, CancellationToken cancel)
     {
-        var have = Length(PartPath);
-        using var request = new HttpRequestMessage(HttpMethod.Get, Url);
+        var have = Length(part);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (have > 0) request.Headers.Range = new RangeHeaderValue(have, null);
         using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         stall.CancelAfter(TimeSpan.FromSeconds(60));
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token);
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
-            File.Delete(PartPath); // lo que había no sirve para retomar: desde cero
+            File.Delete(part); // lo que había no sirve para retomar: desde cero
             return;
         }
         response.EnsureSuccessStatusCode();
         if (response.StatusCode != HttpStatusCode.PartialContent) have = 0; // el servidor no retoma: desde cero
         await using var source = await response.Content.ReadAsStreamAsync(stall.Token);
-        await using var target = new FileStream(PartPath, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.Read);
+        await using var target = new FileStream(part, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.Read);
         var buffer = new byte[1 << 16];
         var reported = have;
         while (true)
@@ -263,11 +271,11 @@ static class VoiceModel
             if (read == 0) break;
             await target.WriteAsync(buffer.AsMemory(0, read), cancel);
             have += read;
-            if (have - reported >= 1_000_000) { reported = have; progress.Report((double)have / Size); }
+            if (have - reported >= 1_000_000) { reported = have; progress.Report(have); }
         }
     }
 
-    static bool Matches(string path, CancellationToken cancel)
+    static bool Matches(string path, string sha256, CancellationToken cancel)
     {
         using var file = File.OpenRead(path);
         using var sha = SHA256.Create();
@@ -279,7 +287,7 @@ static class VoiceModel
             sha.TransformBlock(buffer, 0, read, null, 0);
         }
         sha.TransformFinalBlock(buffer, 0, 0);
-        return Convert.ToHexString(sha.Hash!).Equals(Sha256, StringComparison.OrdinalIgnoreCase);
+        return Convert.ToHexString(sha.Hash!).Equals(sha256, StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -780,34 +788,122 @@ sealed class VoiceInput : IDisposable
     }
 }
 
-/// <summary>Lee las respuestas en voz alta con una voz de Windows en español (opcional).</summary>
+/// <summary>
+/// Lee las respuestas en voz alta (opcional). Con la voz de Claupet (Supertonic, femenina o masculina)
+/// si su modelo ya está en el equipo: frase por frase, sonando la primera mientras se arma la
+/// siguiente, y con las risas o suspiros que haya puesto Claude. Si no, o si se eligió, con una voz de
+/// Windows en español. El modelo cargado ocupa unos 550 MB de memoria: se suelta a los 3 minutos sin hablar.
+/// </summary>
 sealed class ReadAloud : IDisposable
 {
-    System.Speech.Synthesis.SpeechSynthesizer? _voice;
+    static readonly TimeSpan KeepLoaded = TimeSpan.FromMinutes(3);
+    const float Pause = 0.15f; // segundos entre frases
 
-    public void Say(string text)
+    readonly object _engineLock = new();
+    readonly Dictionary<string, Supertonic.Voice> _voices = new();
+    readonly System.Threading.Timer _idle;
+    System.Speech.Synthesis.SpeechSynthesizer? _windows;
+    Supertonic? _engine;
+    CancellationTokenSource? _speaking;
+    WaveOut? _output;
+
+    public ReadAloud() => _idle = new System.Threading.Timer(_ => Unload());
+
+    public void Say(string text, string voice)
+    {
+        Stop();
+        // Sin las caritas de texto, que se leerían letra por letra.
+        var clean = Regex.Replace(text, @"\([^\p{L}\d\s]{1,8}\)|[\\/]\(.{1,6}\)[\\/]|[♪♫]", " ").Trim();
+        if (clean.Length == 0) return;
+        if (ClaupetVoices.IsClaupet(voice) && ClaupetVoiceModel.Ready)
+        {
+            var cancel = _speaking = new CancellationTokenSource();
+            _ = Task.Run(() => SpeakClaupet(clean, voice, cancel.Token));
+        }
+        else SayWithWindows(Expressions.Strip(clean));
+    }
+
+    void SpeakClaupet(string text, string voice, CancellationToken cancel)
     {
         try
         {
-            if (_voice is null)
+            _idle.Change(Timeout.Infinite, Timeout.Infinite);
+            WaveOut? output = null;
+            try
             {
-                _voice = new System.Speech.Synthesis.SpeechSynthesizer();
-                _voice.SetOutputToDefaultAudioDevice();
-                var spanish = _voice.GetInstalledVoices().FirstOrDefault(v => v.Enabled && v.VoiceInfo.Culture.TwoLetterISOLanguageName == "es");
-                if (spanish is not null) _voice.SelectVoice(spanish.VoiceInfo.Name);
+                foreach (var chunk in Supertonic.Chunks(text))
+                {
+                    float[] samples;
+                    int rate;
+                    lock (_engineLock)
+                    {
+                        if (cancel.IsCancellationRequested) return;
+                        var engine = _engine ??= new Supertonic(ClaupetVoiceModel.Folder);
+                        if (!_voices.TryGetValue(voice, out var style))
+                            _voices[voice] = style = Supertonic.LoadVoice(ClaupetVoiceModel.VoiceFile(voice));
+                        samples = engine.Speak(chunk, style);
+                        rate = engine.SampleRate;
+                    }
+                    if (cancel.IsCancellationRequested) return;
+                    if (output is null) _output = output = new WaveOut(rate);
+                    else output.Play(new float[(int)(Pause * rate)]);
+                    output.Play(samples);
+                }
+                output?.Drain(cancel);
             }
-            _voice.SpeakAsyncCancelAll();
-            // Sin las caritas de texto, que se leerían letra por letra.
-            var clean = System.Text.RegularExpressions.Regex.Replace(text, @"\([^\p{L}\d\s]{1,8}\)|[\\/]\(.{1,6}\)[\\/]|[♪♫]", " ");
-            _voice.SpeakAsync(clean);
+            finally
+            {
+                if (output is not null)
+                {
+                    Interlocked.CompareExchange(ref _output, null, output);
+                    output.Dispose();
+                }
+                _idle.Change(KeepLoaded, Timeout.InfiniteTimeSpan);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { ErrorLog.Write(ex); }
+    }
+
+    void SayWithWindows(string text)
+    {
+        try
+        {
+            if (_windows is null)
+            {
+                _windows = new System.Speech.Synthesis.SpeechSynthesizer();
+                _windows.SetOutputToDefaultAudioDevice();
+                var spanish = _windows.GetInstalledVoices().FirstOrDefault(v => v.Enabled && v.VoiceInfo.Culture.TwoLetterISOLanguageName == "es");
+                if (spanish is not null) _windows.SelectVoice(spanish.VoiceInfo.Name);
+            }
+            _windows.SpeakAsync(text);
         }
         catch (Exception) { }
     }
 
     public void Stop()
     {
-        try { _voice?.SpeakAsyncCancelAll(); } catch (Exception) { }
+        _speaking?.Cancel();
+        _speaking = null;
+        _output?.Stop();
+        try { _windows?.SpeakAsyncCancelAll(); } catch (Exception) { }
     }
 
-    public void Dispose() => _voice?.Dispose();
+    /// <summary>Suelta el modelo (y su memoria) si no está hablando.</summary>
+    void Unload()
+    {
+        lock (_engineLock)
+        {
+            _engine?.Dispose();
+            _engine = null;
+            _voices.Clear();
+        }
+    }
+
+    public void Dispose()
+    {
+        Stop();
+        _idle.Dispose();
+        Unload();
+        _windows?.Dispose();
+    }
 }

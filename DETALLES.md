@@ -25,6 +25,7 @@ Las dos apps compilan los mismos archivos de `Core/`; solo la interfaz es propia
 | Eventos del hook | `…\ClaudeUsageTray\events.jsonl` | `…/ClaudeUsageTray/events.jsonl` |
 | Sonidos | `…\ClaudeUsageTray\sonidos` | `…/ClaudeUsageTray/sonidos` |
 | Modelo de voz (Whisper) | `…\ClaudeUsageTray\voz\ggml-small.bin` | — |
+| Voz de Claupet (Supertonic 3) | `…\ClaudeUsageTray\voz\supertonic-3` | — |
 | Consultas del asistente (prompts de sistema) | `…\ClaudeUsageTray\asistente` | — |
 | Credenciales de Claude Code (solo se leen) | `.credentials.json` de cada carpeta | Linux: igual; macOS: el Llavero |
 | Iniciar con el sistema | registro, `HKCU\…\Run` | Linux: `~/.config/autostart/uso-de-claude.desktop`; macOS: `~/Library/LaunchAgents/local.usodeclaude.plist` |
@@ -270,8 +271,24 @@ micrófono; si se corta, se retoma, y solo se usa si su SHA-256 coincide. La ven
 se ajusta al largo de lo dicho (`WithAudioContextSize`) en vez de los 30 s de siempre: una frase de
 3 s pasa a texto en menos de 1 s (antes, unos 5 s), con el mismo acierto (medido con 4 frases). Mientras
 se habla, cada 0,7 s de audio nuevo se muestra lo entendido hasta ahí. El modelo cargado ocupa unos
-850 MB de memoria y se suelta a los 3 minutos sin usarlo. Con «Leer las respuestas en voz alta», las
-lee una voz de Windows en español.
+850 MB de memoria y se suelta a los 3 minutos sin usarlo.
+
+**La voz de Claupet** (`Supertonic.cs`, `ClaupetVoice.cs`). Con «Leer las respuestas en voz alta», las
+lee [Supertonic 3](https://github.com/supertone-inc/supertonic) en el equipo, con ONNX Runtime 1.20.1
+en la CPU: la voz femenina (F4) o la masculina (M1), en `ReadAloudVoice`. El texto entra tal cual, sin
+pasar a fonemas. La inferencia está adaptada de su ejemplo en C# (MIT); el modelo es OpenRAIL-M y su
+`LICENSE` se baja con él.
+
+| Qué | Cómo |
+|---|---|
+| Modelo | los 9 archivos que se usan (unos 400 MB), de una versión fija de Hugging Face y con su SHA-256, en `…\ClaudeUsageTray\voz\supertonic-3`; se bajan al elegir una voz de Claupet, retomando como el de Whisper |
+| Velocidad | 8 pasos, como el ejemplo: una frase de 5 s tarda unos 2 s en un Ryzen 7 5700U. Se habla frase por frase: la primera va sola (sale en menos de 1 s) y las demás se generan mientras suena la anterior |
+| Memoria | unos 550 MB con el modelo cargado; se suelta a los 3 minutos sin hablar |
+| Sonido | `waveOut`, aparte de los sonidos de los avisos (que van por `PlaySound` y se cortarían entre sí) |
+| Expresiones | con la voz de Claupet, se le permite a Claude poner `<laugh>`, `<sigh>` o `<breath>`, como mucho una por respuesta: se oyen y no se muestran (`Expressions`, también cuando llegan partidas) |
+| Sin el modelo | mientras se baja, o con «La de Windows», lee una voz de Windows en español, sin las etiquetas |
+
+Las caritas de texto, como `(^_^)`, no se leen.
 
 | Para hablar | Qué pasa |
 |---|---|
@@ -383,6 +400,8 @@ Solo en Windows, para probar el asistente:
   micrófono, como si se mantuviera la tecla mientras suena. Necesita «Micrófono» encendido.
 - `--accion <acción> <valor>`: hace esa acción de la mascota sin pasar por Claude (por ejemplo,
   `--accion volumen 30`) y escribe «listo» o lo que falló.
+- `--descargar-voz`: baja la voz de Claupet como desde **Ajustes**, con el avance.
+- `--decir <F4|M1> <texto>`: lo dice con esa voz, frase por frase, y escribe cuánto tardó cada una.
 
 ## Si no salen avisos
 

@@ -47,6 +47,10 @@ sealed class TrayApp : ApplicationContext
     CancellationTokenSource? _modelDownload;
     int? _modelPercent;
     string? _modelError;
+    /// <summary>La descarga de la voz de Claupet (Supertonic), como la del modelo de voz.</summary>
+    CancellationTokenSource? _speechDownload;
+    int? _speechPercent;
+    string? _speechError;
     ActivitySummary? _activitySummary;
     /// <summary>«Siempre en esta sesión»: sesión, herramienta y comando que ya no preguntan.</summary>
     readonly HashSet<string> _alwaysAllow = new();
@@ -311,6 +315,9 @@ sealed class TrayApp : ApplicationContext
             VoiceStatus = VoiceStatusText().Status,
             VoiceAction = VoiceStatusText().Action,
             ReadAloud = s.ReadAloud,
+            ReadAloudVoice = ClaupetVoices.Label(s.ReadAloudVoice),
+            SpeechStatus = SpeechStatusText().Status,
+            SpeechAction = SpeechStatusText().Action,
             Island = s.Island,
             IslandModel = AssistantModels.Label(s.IslandModel),
             IslandHover = s.IslandHover,
@@ -365,6 +372,44 @@ sealed class TrayApp : ApplicationContext
         {
             _modelDownload = null;
             _modelPercent = null;
+            cancel.Dispose();
+            PushSettings();
+        }
+    }
+
+    /// <summary>La fila de la voz de Claupet en Ajustes; vacía si no hace falta (ya está, o se eligió la de Windows).</summary>
+    (string Status, string Action) SpeechStatusText() =>
+        !ClaupetVoices.IsClaupet(_settings.ReadAloudVoice) || ClaupetVoiceModel.Ready ? ("", "")
+        : _speechDownload is not null ? ($"Descargando la voz… {_speechPercent ?? 0} %", "Cancelar")
+        : _speechError is not null ? ($"No se pudo descargar ({_speechError})", "Reintentar")
+        : ($"Voz de Claupet ({ClaupetVoiceModel.Size / 1_000_000} MB, una sola vez)", "Descargar");
+
+    /// <summary>Baja la voz de Claupet (retoma lo que haya quedado de antes) y muestra el avance en Ajustes. Mientras tanto lee la de Windows.</summary>
+    async Task DownloadSpeechAsync()
+    {
+        if (_speechDownload is not null || ClaupetVoiceModel.Ready) return;
+        var cancel = _speechDownload = new CancellationTokenSource();
+        _speechError = null;
+        _speechPercent = 0;
+        PushSettings();
+        var progress = new Progress<double>(p =>
+        {
+            var percent = (int)(p * 100);
+            if (_speechDownload != cancel || percent == _speechPercent) return;
+            _speechPercent = percent;
+            PushSettings();
+        });
+        try { await ClaupetVoiceModel.DownloadAsync(progress, cancel.Token); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+            _speechError = ex is IOException ? ex.Message.TrimEnd('.') : "el servidor no respondió";
+        }
+        finally
+        {
+            _speechDownload = null;
+            _speechPercent = null;
             cancel.Dispose();
             PushSettings();
         }
@@ -508,6 +553,18 @@ sealed class TrayApp : ApplicationContext
             case "readaloud":
                 Toggle(s => s.ReadAloud = !s.ReadAloud);
                 if (!_settings.ReadAloud) _readAloud?.Stop();
+                else if (ClaupetVoices.IsClaupet(_settings.ReadAloudVoice)) _ = DownloadSpeechAsync(); // se descarga una vez
+                break;
+            case "readvoice":
+                ShowOptions(ClaupetVoices.Choices, _settings.ReadAloudVoice, v =>
+                {
+                    Change(s => s.ReadAloudVoice = v);
+                    if (ClaupetVoices.IsClaupet(v)) _ = DownloadSpeechAsync();
+                });
+                break;
+            case "speech":
+                if (_speechDownload is { } speech) speech.Cancel();
+                else _ = DownloadSpeechAsync();
                 break;
             case "island": Toggle(s => s.Island = !s.Island); break;
             case "imodel": ShowOptions(AssistantModels.IslandChoices, _settings.IslandModel ?? "", m => Change(s => s.IslandModel = m.Length == 0 ? null : m)); break;
@@ -718,8 +775,18 @@ sealed class TrayApp : ApplicationContext
     /// <summary>Lee la respuesta en voz alta, si se pidió (Ajustes › Asistente › Voz).</summary>
     void ReadAloudIfOn(string text)
     {
-        if (_settings.Mic && _settings.ReadAloud && text.Length > 0) (_readAloud ??= new ReadAloud()).Say(text);
+        if (_settings.Mic && _settings.ReadAloud && text.Length > 0) (_readAloud ??= new ReadAloud()).Say(text, _settings.ReadAloudVoice);
     }
+
+    /// <summary>
+    /// Lee lo que se mostró: si es la respuesta de Claude, con sus risas o suspiros (Spoken); si no (la
+    /// acción falló), tal cual.
+    /// </summary>
+    void ReadAloudIfOn(AssistantResult result, string shown) =>
+        ReadAloudIfOn(shown == result.Text && result.Spoken is { } spoken ? spoken : shown);
+
+    /// <summary>La respuesta se leerá con la voz de Claupet: Claude puede ponerle risas o suspiros.</summary>
+    bool Expressive => _settings.Mic && _settings.ReadAloud && ClaupetVoices.IsClaupet(_settings.ReadAloudVoice);
 
     /// <summary>
     /// Los lunes (o la primera vez que la app corre en la semana), el resumen de la semana pasada en la
@@ -921,6 +988,7 @@ sealed class TrayApp : ApplicationContext
             Context = AssistantContext(),
             History = history,
             Chibi = Mascots.IsChibi,
+            Expressive = Expressive,
         }, piece =>
         {
             if (cancel.IsCancellationRequested) return;
@@ -949,7 +1017,7 @@ sealed class TrayApp : ApplicationContext
             var answer = await RunActionAsync(result);
             if (cancel.IsCancellationRequested) return;
             _chat.Add(new ChatTurn(false, answer));
-            ReadAloudIfOn(answer);
+            ReadAloudIfOn(result, answer);
         }
         PushIslandChat(false);
     }
@@ -1270,6 +1338,7 @@ sealed class TrayApp : ApplicationContext
             Context = AssistantContext(),
             History = _chat.Turns.ToList(),
             Chibi = Mascots.IsChibi,
+            Expressive = Expressive,
         };
         _chat.Add(new ChatTurn(true, text));
         var result = await Assistant.AskAsync(request, piece =>
@@ -1299,7 +1368,7 @@ sealed class TrayApp : ApplicationContext
         if (cancel.IsCancellationRequested || bubble.IsDisposed) return;
         _chat.Add(new ChatTurn(false, answer));
         bubble.Finish(answer, _settings.Island);
-        ReadAloudIfOn(answer);
+        ReadAloudIfOn(result, answer);
     }
 
     /// <summary>La tarea que propuso: se abre en su carpeta (la del archivo, si vino de uno), en la de las tareas o en otra que se elija.</summary>
@@ -1865,6 +1934,7 @@ sealed class TrayApp : ApplicationContext
         _hotkeys?.Dispose();
         _keyHook?.Dispose();
         _modelDownload?.Cancel();
+        _speechDownload?.Cancel();
         _voice?.Dispose();
         _readAloud?.Dispose();
         _island?.Dispose();

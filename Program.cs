@@ -18,6 +18,40 @@ static class Program
             return problem is null ? 0 : 1;
         }
 
+        // --descargar-voz: baja la voz de Claupet como desde Ajustes, con el avance a la salida estándar.
+        if (args.Contains("--descargar-voz"))
+        {
+            var last = -1;
+            ClaupetVoiceModel.DownloadAsync(new Progress<double>(p =>
+            {
+                var percent = (int)(p * 100);
+                if (percent / 10 != last / 10) Console.WriteLine($"{percent} %");
+                last = percent;
+            }), CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine(ClaupetVoiceModel.Ready ? "lista" : "incompleta");
+            return ClaupetVoiceModel.Ready ? 0 : 1;
+        }
+
+        // --decir <F4|M1> <texto>: lo dice con la voz de Claupet (ya descargada), como al leer una respuesta, y dice cuánto tardó.
+        if (Array.IndexOf(args, "--decir") is var t and >= 0 && t + 2 < args.Length)
+        {
+            if (!ClaupetVoiceModel.Ready) { Console.WriteLine("Falta descargar la voz (Ajustes › Asistente)."); return 1; }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var engine = new Supertonic(ClaupetVoiceModel.Folder);
+            var voice = Supertonic.LoadVoice(ClaupetVoiceModel.VoiceFile(args[t + 1]));
+            Console.WriteLine($"carga: {clock.ElapsedMilliseconds} ms");
+            using var output = new WaveOut(engine.SampleRate);
+            foreach (var chunk in Supertonic.Chunks(args[t + 2]))
+            {
+                clock.Restart();
+                var samples = engine.Speak(chunk, voice);
+                Console.WriteLine($"«{chunk}»: {samples.Length / (double)engine.SampleRate:0.0} s de audio en {clock.ElapsedMilliseconds} ms");
+                output.Play(samples);
+            }
+            output.Drain(CancellationToken.None);
+            return 0;
+        }
+
         // --diag: el mismo resumen que «Copiar diagnóstico», a la salida estándar.
         if (args.Contains("--diag"))
         {
