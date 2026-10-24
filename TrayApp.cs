@@ -62,6 +62,7 @@ sealed class TrayApp : ApplicationContext
     {
         _form.StayOpen = preview;
         _settings = SettingsStore.Load();
+        _director.Settings = _settings;
         if (SettingsStore.DetectNew(_settings)) SettingsStore.Save(_settings);
         _settings.Selected ??= _settings.Accounts.FirstOrDefault()?.ConfigDir;
         Sounds.EnsureDefaults();
@@ -292,6 +293,12 @@ sealed class TrayApp : ApplicationContext
             MascotSize = MascotSizes.Label(s.MascotSize),
             DesktopMascot = s.DesktopMascot,
             Speak = s.Speak,
+            FlowGestures = s.FlowGestures,
+            DanceToMusic = s.DanceToMusic,
+            NoticeGestures = s.NoticeGestures,
+            GreetOnAppear = s.GreetOnAppear,
+            AngryOnClicks = s.AngryOnClicks,
+            SleepWithoutSessions = s.SleepWithoutSessions,
             Chat = s.Chat,
             MascotModel = AssistantModels.Label(s.MascotModel),
             AssistantAccount = AssistantAccountLabel(),
@@ -459,6 +466,15 @@ sealed class TrayApp : ApplicationContext
             case "size": ShowOptions(MascotSizes.Choices, _settings.MascotSize, SetMascotSize); break;
             case "desk": ToggleDesktopMascot(); break;
             case "speak": ToggleSpeak(); break;
+            case "flowgest": Toggle(s => s.FlowGestures = !s.FlowGestures); break;
+            case "music": Toggle(s => s.DanceToMusic = !s.DanceToMusic); break;
+            case "noticegest": Toggle(s => s.NoticeGestures = !s.NoticeGestures); break;
+            case "greet": Toggle(s => s.GreetOnAppear = !s.GreetOnAppear); break;
+            case "angry": Toggle(s => s.AngryOnClicks = !s.AngryOnClicks); break;
+            case "sleep":
+                Toggle(s => s.SleepWithoutSessions = !s.SleepWithoutSessions);
+                _ = ScanSessionsAsync(); // para que se duerma o se despierte ya
+                break;
             case "chat": Toggle(s => s.Chat = !s.Chat); break;
             case "mmodel": ShowOptions(AssistantModels.Choices, _settings.MascotModel, m => Change(s => s.MascotModel = m)); break;
             case "account": ShowOptions(AssistantAccountChoices(), _settings.AssistantAccount ?? "", a => Change(s => s.AssistantAccount = a.Length == 0 ? null : a)); break;
@@ -527,13 +543,14 @@ sealed class TrayApp : ApplicationContext
 
     void Toggle(Action<AppSettings> flip) => Change(flip);
 
-    /// <summary>Lo que depende de los ajustes del asistente y la isla se pone al día.</summary>
+    /// <summary>Lo que depende de los ajustes del asistente, la isla y la mascota se pone al día.</summary>
     void SettingsChanged()
     {
         UpdateIsland();
         UpdateHotkeys();
         UpdateVoice();
         UpdateKeyHook();
+        Music.Watch(_settings.DesktopMascot && _settings.DanceToMusic);
     }
 
     // ── Voz ─────────────────────────────────────────────────────────────────────────────────
@@ -1442,6 +1459,7 @@ sealed class TrayApp : ApplicationContext
     void UpdateMascotWindow()
     {
         var wanted = _settings.DesktopMascot;
+        Music.Watch(wanted && _settings.DanceToMusic); // la música solo se mira si hay mascota que baile
         if (_mascotWindow is { } current && (!wanted || current.Chibi != Mascots.IsChibi))
         {
             _bubble.Hide();

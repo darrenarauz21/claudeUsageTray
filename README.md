@@ -18,14 +18,16 @@ de Claude Code.
   ícono al actualizar y sale en los avisos (la clásica, el chibi, el asterisco, los puntos o
   ninguna), en **Ajustes**.
 - **Chibi:** una mascota más, Claude con pelo naranja y hoodie de cangrejo. Aparece en los avisos y
-  al actualizar, y puede quedarse en el escritorio: baila mientras sus sesiones trabajan, piensa
-  cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas cuando se renueva
-  un límite. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia; cuando
+  al actualizar, y puede quedarse en el escritorio: muestra lo que hacen sus sesiones (lee un libro,
+  busca con la lupa, escribe en su libreta, teclea en su laptop, gira el globo, guía a sus ayudantes,
+  piensa o, con otras herramientas, construye una casita), cabecea si suena música y baila cuando no
+  hay trabajo, piensa cuando le preguntan algo, duerme si no hay ninguna y baila chachachá con maracas
+  cuando se renueva un límite. Cada comportamiento tiene su interruptor en **Ajustes**. Si la molestan a clics, hace puchero, cruza los brazos y termina roja de furia; cuando
   se le pasa, suspira y busca de reojo quién fue. Trae su
   propio estilo de sonido, «Chibi»: un «¡oi!» y, si algo falla, un «¡uwaaa!», con voz de lectura en
   japonés.
 - **Mascota en el escritorio y «Hablar»:** cualquier mascota, la clásica también, puede quedarse en
-  el escritorio y contar los avisos en una nubecita, a su manera.
+  el escritorio, hacer los mismos gestos y contar los avisos en una nubecita, a su manera.
 - **Hablar con Claude** (en Windows, por ahora): la mascota del escritorio y la **isla** de arriba de
   la pantalla responden lo que les pregunte, por escrito o de viva voz; si les suelta un archivo, se
   lo resumen. Vea [Hablar con Claude](#hablar-con-claude).
@@ -37,13 +39,13 @@ contraseñas ni el texto de sus conversaciones.
 
 | Sistema | Archivo |
 |---|---|
-| Windows 10 y 11 | [UsoDeClaude-windows-x64.exe](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-windows-x64.exe) |
-| macOS con chip Apple (M1, M2, M3…) | [UsoDeClaude-macos-arm64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-arm64.zip) |
-| macOS con Intel | [UsoDeClaude-macos-x64.zip](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-macos-x64.zip) |
-| Linux (x64) | [UsoDeClaude-linux-x64.tar.gz](https://github.com/darrenarauz21/claudeUsageTray/releases/latest/download/UsoDeClaude-linux-x64.tar.gz) |
+| Windows 10 y 11 | [UsoDeClaude-windows-x64.exe](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-windows-x64.exe) |
+| macOS con chip Apple (M1, M2, M3…) | [UsoDeClaude-macos-arm64.zip](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-macos-arm64.zip) |
+| macOS con Intel | [UsoDeClaude-macos-x64.zip](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-macos-x64.zip) |
+| Linux (x64) | [UsoDeClaude-linux-x64.tar.gz](https://github.com/darrenarauz21/claupet/releases/latest/download/UsoDeClaude-linux-x64.tar.gz) |
 
 Los enlaces descargan siempre la última versión; todas están en
-[Releases](https://github.com/darrenarauz21/claudeUsageTray/releases). No hace falta instalar nada
+[Releases](https://github.com/darrenarauz21/claupet/releases). No hace falta instalar nada
 más: cada archivo trae todo lo que necesita.
 
 ## Instalar

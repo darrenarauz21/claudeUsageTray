@@ -6,7 +6,7 @@ namespace ClaudeUsageTray;
 /// bracitos, cuatro patas, ojos y boca según la emoción, y un accesorio por caso. Se dibuja en un
 /// lienzo de 26 × 18 casillas; todo se anima a partir del tiempo transcurrido.
 /// </summary>
-static class ToastSprite
+static partial class ToastSprite
 {
     public const int Columns = 26, Rows = 18;
     const int Ox = 2, Oy = 6; // dónde va la mascota dentro del lienzo
@@ -60,13 +60,14 @@ static class ToastSprite
     /// <summary>
     /// La mascota clásica en el escritorio, con los movimientos del chibi (ChibiDirector): los que
     /// tienen aviso se toman de ahí (festejar, pensar, marearse, dormir, el límite renovado) y los demás
-    /// se arman con las mismas piezas. t es el tiempo desde que empezó el movimiento.
+    /// se arman con las mismas piezas. t es el tiempo desde que empezó el movimiento. Con música, los
+    /// gestos del flujo rebotan al compás y sueltan notas (ToastFlows).
     /// </summary>
-    public static void PaintMove(PixelFill fill, ChibiMove move, long t, Color body)
+    public static void PaintMove(PixelFill fill, ChibiMove move, long t, Color body, bool music = false)
     {
         var kind = move switch
         {
-            ChibiMove.Cheer => NoticeKind.Done,
+            ChibiMove.Cheer or ChibiMove.Built => NoticeKind.Done, // la casita es del chibi: la clásica festeja
             ChibiMove.Maracas => NoticeKind.UsageReset,
             ChibiMove.Think => NoticeKind.Question,
             ChibiMove.Dizzy => NoticeKind.Failed,
@@ -76,6 +77,7 @@ static class ToastSprite
         if (kind is { } k) { Paint(fill, k, t, body); return; }
 
         var p = new Painter(fill);
+        if (PaintFlow(p, move, t, body, music)) return;
         var blink = t % 2800 > 2660;
         switch (move)
         {

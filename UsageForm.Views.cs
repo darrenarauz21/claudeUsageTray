@@ -20,6 +20,12 @@ sealed partial class UsageForm
         public string MascotSize { get; init; } = "";
         public bool DesktopMascot { get; init; }
         public bool Speak { get; init; }
+        public bool FlowGestures { get; init; }
+        public bool DanceToMusic { get; init; }
+        public bool NoticeGestures { get; init; }
+        public bool GreetOnAppear { get; init; }
+        public bool AngryOnClicks { get; init; }
+        public bool SleepWithoutSessions { get; init; }
         public bool Chat { get; init; }
         public string MascotModel { get; init; } = "";
         public string AssistantAccount { get; init; } = "";
@@ -87,7 +93,7 @@ sealed partial class UsageForm
         _settingsState = state;
         if (_view != View.Settings) return;
         // Las filas que aparecen o se van (al encender el chat, la isla, el micrófono…) entran con una transición.
-        if (old.Chat != state.Chat || old.Mic != state.Mic || old.Island != state.Island || old.DesktopMascot != state.DesktopMascot)
+        if (old.Chat != state.Chat || old.Mic != state.Mic || old.Island != state.Island || old.DesktopMascot != state.DesktopMascot || old.DanceToMusic != state.DanceToMusic)
         {
             BeginTransition(Slide.Fade);
             Relayout();
@@ -345,7 +351,17 @@ sealed partial class UsageForm
                 y = ChoiceRow(g, draw, "Mascota", "mascot", s.Mascot, y);
                 y = ChoiceRow(g, draw, "Tamaño de la mascota", "size", s.MascotSize, y);
                 y = SwitchRow(g, draw, "Mascota en el escritorio", "desk", s.DesktopMascot, y);
-                if (s.DesktopMascot) y = SwitchRow(g, draw, "Hablar (los avisos en una nubecita)", "speak", s.Speak, y);
+                if (s.DesktopMascot)
+                {
+                    y = SwitchRow(g, draw, "Gestos del flujo (lo que hace la sesión)", "flowgest", s.FlowGestures, y);
+                    y = SwitchRow(g, draw, "Bailar con música", "music", s.DanceToMusic, y);
+                    y = SwitchRow(g, draw, "Gesto de los avisos", "noticegest", s.NoticeGestures, y);
+                    y = SwitchRow(g, draw, "Saludar al aparecer", "greet", s.GreetOnAppear, y);
+                    y = SwitchRow(g, draw, "Enojarse con muchos clics", "angry", s.AngryOnClicks, y);
+                    y = SwitchRow(g, draw, "Dormir sin sesiones", "sleep", s.SleepWithoutSessions, y);
+                    y = SwitchRow(g, draw, "Hablar (los avisos en una nubecita)", "speak", s.Speak, y);
+                    if (s.DanceToMusic) y = HintRow(g, draw, "La música es lo que suene en el control multimedia de Windows: Spotify, YouTube en el navegador…", y + S(4));
+                }
                 break;
             case SettingsTab.Asistente:
                 y = SettingsCaption(g, draw, "Chat", y);

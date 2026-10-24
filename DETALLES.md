@@ -64,9 +64,15 @@ muestra al elegir.
   sola al elegir el chibi.
 - **Hablar:** con la mascota en el escritorio, cuenta cada aviso en una nubecita, a su manera
   (`MascotLines`: de tú y con caritas), además del aviso de siempre.
+- **Un interruptor por comportamiento** de la mascota del escritorio, todos encendidos al empezar:
+  gestos del flujo (si se apaga, baila mientras trabaja, como antes), bailar con música, gesto de los
+  avisos, saludar al aparecer, enojarse con muchos clics (si se apaga, siempre saluda) y dormir sin
+  sesiones (si se apaga, se queda quieta). En Linux y macOS no está «Bailar con música»: la música
+  sale del control multimedia de Windows.
 
 Se guardan en `Palette`, `Animation` (el estilo al actualizar), `Mascot` (la de los avisos),
-`DesktopMascot` y `Speak` del `settings.json` de la app.
+`DesktopMascot`, `Speak`, `FlowGestures`, `DanceToMusic`, `NoticeGestures`, `GreetOnAppear`,
+`AngryOnClicks` y `SleepWithoutSessions` del `settings.json` de la app.
 
 ## Chibi
 
@@ -80,7 +86,16 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Movimiento | Cuándo |
 |---|---|
 | Quieta (parpadea y mira) | hay sesiones, ninguna trabaja |
-| Bailar | alguna sesión trabaja |
+| Leer (un libro; los ojos van por los renglones y pasa la página) | la sesión lee (Read) |
+| Buscar (mira por la lupa con un ojo) | busca (Grep, Glob, ToolSearch) |
+| Editar (escribe en la libreta, renglón por renglón) | edita (Edit, Write, NotebookEdit) |
+| Ejecutar (teclea detrás de la laptop, con la pantalla en los ojos) | ejecuta (Bash, PowerShell) |
+| Web (el globo gira y los ojitos de cangrejo hacen de antenas) | busca o lee en la web |
+| Agentes (señala, aparece un ayudante con un «puf» y lo observa) | delega en un subagente |
+| Pensar el siguiente paso (una nube con tres puntos) | trabaja y el último paso ya volvió |
+| Construir una casita con el mazo (de rodillas, de pie, de espaldas y del otro lado) | otra herramienta (MCP, skills, la lista de tareas…) |
+| Festejar la casita (lista; salta contenta) | esa otra herramienta terminó |
+| Bailar | alguna sesión trabaja, con «Gestos del flujo» apagado; sin trabajo y con música |
 | Pensar (manito en la boca) | alguna espera su respuesta; en los avisos de pregunta, permiso, reintento, uso alto y sesión vencida |
 | Dormida | no hay sesiones; aviso de sesión cerrada |
 | Festejar | terminó |
@@ -92,8 +107,21 @@ casillas. La cabeza, para la bandeja y el pie, es la del cuerpo (32 × 32); en �
 | Furia (roja, brazos en Λ, humo y 💢) | 9 clics seguidos o más; se le pasa a los 4 s sin clics |
 | Se calma (suspira y mira de reojo a los lados, buscando quién fue) | al pasársele el puchero, los brazos cruzados o la furia; después vuelve a lo que corresponda |
 
+Con varias sesiones, `ChibiDirector` elige primero por importancia y, dentro del mismo nivel, la
+sesión con el último paso: una pregunta o un permiso en cualquiera (interrumpe enseguida); lo que
+cambia cosas (editar, ejecutar, agentes); lo que consulta (leer, buscar, web, otras herramientas);
+pensar. Cada gesto del flujo dura al menos una vuelta (la casita, unos 3 s), así que se ven también
+los pasos de milisegundos: la app lee las sesiones cada 1,5 a 3 s y de cada una mira solo el último
+paso. Los gestos del flujo están en `ChibiFlows` y la casita, con las vistas de perfil y de espaldas
+que solo usa ella, en `ChibiBuild`.
+
+Con música (algo reproduciéndose en el control multimedia de Windows, `Core/Music.cs`: Spotify,
+YouTube en el navegador…), el gesto del flujo cabecea al compás y suelta notitas; al ejecutar se pone
+audífonos y mece la cabecita. Sin trabajo, baila. Solo se mira si hay algo reproduciéndose, no qué
+suena, y solo con «Bailar con música» y la mascota en el escritorio.
+
 Con un aviso, la mascota del escritorio hace el mismo gesto del aviso unos segundos y después vuelve
-a lo que corresponda.
+a lo que corresponda (con «Gesto de los avisos» encendido).
 
 En los avisos asoma desde abajo (de la cabeza al ruedo). En el escritorio vive en una ventana sin
 marco ni fondo, siempre encima, que no quita el foco: se arrastra para moverla, sin salirse de la
@@ -101,7 +129,8 @@ pantalla (la posición queda en `DesktopMascotX` y `DesktopMascotY`), y el clic 
 oculta. `ChibiDirector` decide qué hace según las sesiones, que la app sigue leyendo mientras la
 mascota esté a la vista aunque las notificaciones estén apagadas. La mascota clásica también puede
 estar en el escritorio, con los mismos movimientos armados con sus dibujos de los avisos
-(`ToastSprite.PaintMove`). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
+(`ToastSprite.PaintMove`; los gestos del flujo, en `ToastFlows`, con el objeto al costado o encima, y
+para otras herramientas martilla). La nubecita de «Hablar» es de pixeles (`BubbleSprite`), va arriba de la
 mascota (o abajo, si no cabe), la sigue al arrastrarla y se va a los 8 s; un clic abre lo mismo que
 el aviso.
 

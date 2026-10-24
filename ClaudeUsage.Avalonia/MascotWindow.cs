@@ -66,7 +66,7 @@ sealed class MascotWindow : Window
         Opened += (_, _) =>
         {
             Position = Fit(_saved ?? DefaultPosition());
-            _director.Gesture(ChibiMove.Wave); // saluda al aparecer
+            _director.Appear(); // saluda al aparecer
             _timer.Start();
         };
         Closed += (_, _) => _timer.Stop();
@@ -126,13 +126,13 @@ sealed class MascotWindow : Window
 
     sealed class MascotView(ChibiDirector director, bool chibi, double unit, Func<System.Drawing.Color> accent) : Control
     {
-        (ChibiMove Move, int Frame) _shown = (ChibiMove.Sleep, -1);
+        (ChibiMove Move, int Frame, long Beat) _shown = (ChibiMove.Sleep, -1, -1);
 
-        /// <summary>Repinta solo cuando cambia el cuadro (la clásica se anima con el tiempo: cada vuelta del reloj).</summary>
+        /// <summary>Repinta solo cuando cambia el cuadro o, con música, el tiempo del compás (la clásica se anima con el tiempo: cada vuelta del reloj).</summary>
         public void Tick()
         {
-            var (move, t) = director.Now();
-            var shown = (move, chibi ? ChibiSprite.FrameIndex(move, t) : (int)(t / 40));
+            var (move, t, music) = director.Now();
+            var shown = (move, chibi ? ChibiSprite.FrameIndex(move, t) : (int)(t / 40), music ? t / ChibiSprite.Beat : -1);
             if (shown == _shown) return;
             _shown = shown;
             InvalidateVisual();
@@ -140,9 +140,9 @@ sealed class MascotWindow : Window
 
         public override void Render(DrawingContext dc)
         {
-            var (move, t) = director.Now();
-            if (chibi) Gfx.Pixels(dc, 0, 0, unit, fill => ChibiSprite.Paint(fill, move, t));
-            else Gfx.Pixels(dc, 0, 0, unit, fill => ToastSprite.PaintMove(fill, move, t, accent()));
+            var (move, t, music) = director.Now();
+            if (chibi) Gfx.Pixels(dc, 0, 0, unit, fill => ChibiSprite.Paint(fill, move, t, music));
+            else Gfx.Pixels(dc, 0, 0, unit, fill => ToastSprite.PaintMove(fill, move, t, accent(), music));
         }
     }
 }

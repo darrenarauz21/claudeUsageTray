@@ -28,7 +28,7 @@ sealed class MascotWindow : Form
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 };
     readonly ContextMenuStrip _menu = new();
     int _unit;
-    (ChibiMove Move, int Frame) _shown = (ChibiMove.Sleep, -1);
+    (ChibiMove Move, int Frame, long Beat) _shown = (ChibiMove.Sleep, -1, -1);
     Point? _pressAt;
     Point _startLocation;
     bool _dragging;
@@ -80,7 +80,7 @@ sealed class MascotWindow : Form
             ? new Size(ChibiSprite.Columns * _unit, ChibiSprite.Rows * _unit)
             : new Size(ToastSprite.Columns * _unit, ToastSprite.Rows * _unit);
         Location = Fit(new Point(feet.X - Width / 2, feet.Y - Height));
-        _shown = (ChibiMove.Sleep, -1);
+        _shown = (ChibiMove.Sleep, -1, -1);
         _director.Gesture(ChibiMove.Cheer, 700);
         Invalidate();
         Moved?.Invoke(Location);
@@ -118,15 +118,15 @@ sealed class MascotWindow : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        _director.Gesture(ChibiMove.Wave); // saluda al aparecer
+        _director.Appear(); // saluda al aparecer
         _timer.Start();
     }
 
-    /// <summary>Repinta solo cuando cambia el cuadro (la clásica se anima con el tiempo: cada vuelta del reloj).</summary>
+    /// <summary>Repinta solo cuando cambia el cuadro o, con música, el tiempo del compás (la clásica se anima con el tiempo: cada vuelta del reloj).</summary>
     void Tick()
     {
-        var (move, t) = _director.Now();
-        var shown = (move, Chibi ? ChibiSprite.FrameIndex(move, t) : (int)(t / _timer.Interval));
+        var (move, t, music) = _director.Now();
+        var shown = (move, Chibi ? ChibiSprite.FrameIndex(move, t) : (int)(t / _timer.Interval), music ? t / ChibiSprite.Beat : -1);
         if (shown == _shown) return;
         _shown = shown;
         Invalidate();
@@ -135,9 +135,9 @@ sealed class MascotWindow : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.Clear(Key);
-        var (move, t) = _director.Now();
-        if (Chibi) ToastArt.Pixels(e.Graphics, 0, 0, _unit, fill => ChibiSprite.Paint(fill, move, t));
-        else ToastArt.Pixels(e.Graphics, 0, 0, _unit, fill => ToastSprite.PaintMove(fill, move, t, _accent()));
+        var (move, t, music) = _director.Now();
+        if (Chibi) ToastArt.Pixels(e.Graphics, 0, 0, _unit, fill => ChibiSprite.Paint(fill, move, t, music));
+        else ToastArt.Pixels(e.Graphics, 0, 0, _unit, fill => ToastSprite.PaintMove(fill, move, t, _accent(), music));
     }
 
     protected override void OnDragEnter(DragEventArgs e)

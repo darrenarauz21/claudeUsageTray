@@ -53,6 +53,18 @@ sealed class AppSettings
     public bool DesktopMascot { get; set; }
     /// <summary>«Hablar»: la mascota del escritorio cuenta los avisos en una nubecita, además del aviso de siempre.</summary>
     public bool Speak { get; set; } = true;
+    /// <summary>La mascota del escritorio muestra lo que hace la sesión (leer, buscar, editar…); si no, baila mientras trabaja.</summary>
+    public bool FlowGestures { get; set; } = true;
+    /// <summary>Con algo sonando en el control multimedia: cabecea mientras trabaja y baila si no hay trabajo.</summary>
+    public bool DanceToMusic { get; set; } = true;
+    /// <summary>Festeja, se marea o baila chachachá cuando llega un aviso.</summary>
+    public bool NoticeGestures { get; set; } = true;
+    /// <summary>Saluda con la mano al aparecer en el escritorio.</summary>
+    public bool GreetOnAppear { get; set; } = true;
+    /// <summary>Puchero, brazos cruzados y furia con muchos clics seguidos; si no, siempre saluda.</summary>
+    public bool AngryOnClicks { get; set; } = true;
+    /// <summary>Se duerme sin sesiones abiertas; si no, se queda quieta.</summary>
+    public bool SleepWithoutSessions { get; set; } = true;
     /// <summary>Dónde quedó la ventana de la mascota al arrastrarla, en pixeles de pantalla; null: junto a los avisos.</summary>
     public int? DesktopMascotX { get; set; }
     public int? DesktopMascotY { get; set; }

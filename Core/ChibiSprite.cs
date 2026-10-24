@@ -60,9 +60,11 @@ static class MascotSizes
 /// Lo que hace el chibi: cada movimiento es una secuencia de cuadros que se repite. Listen, Hear y Talk
 /// son del chat (mira lo que se escribe, oye lo que se le dice al micrófono y cuenta la respuesta); Catch, Carry, CarryLeft, CarryRight y
 /// Throw, del archivo que se le suelta encima (lo atrapa, lo lleva en una caja y lo lanza a la isla), y
-/// WalkLeft y WalkRight, la vuelta a su lugar con las manos libres.
+/// WalkLeft y WalkRight, la vuelta a su lugar con las manos libres. Read a Tool son los gestos del flujo
+/// (lo que hace la sesión: leer, buscar, editar, ejecutar, web, agentes, pensar u otra herramienta) y
+/// Built, el festejo cuando esa otra herramienta termina (ChibiFlows y ChibiBuild).
 /// </summary>
-enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury, Calm, Listen, Hear, Talk, Catch, Carry, CarryLeft, CarryRight, Throw, WalkLeft, WalkRight }
+enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, Sulk, Fury, Calm, Listen, Hear, Talk, Catch, Carry, CarryLeft, CarryRight, Throw, WalkLeft, WalkRight, Read, Search, Edit, Run, Web, Agent, Ponder, Tool, Built }
 
 /// <summary>
 /// El chibi de Claude: pelo naranja y hoodie de cangrejo (ojitos sobre antenas), en pixeles. El
@@ -71,7 +73,7 @@ enum ChibiMove { Idle, Dance, Wave, Cheer, Think, Dizzy, Sleep, Maracas, Pout, S
 /// agrega efectos alrededor. Se dibuja en un lienzo de 40 × 52 casillas, con margen para brazos y
 /// saltos; la cabeza sola, para el ícono de la bandeja, en 16 × 16. Sus colores son fijos.
 /// </summary>
-static class ChibiSprite
+static partial class ChibiSprite
 {
     public const int Columns = 40, Rows = 52;
     /// <summary>La cabeza para la animación al actualizar: grande (32 × 32, la del cuerpo) y chica (16 × 16, para íconos de 16 px).</summary>
@@ -198,9 +200,9 @@ static class ChibiSprite
         "...KoOOOOoOOOOOO",
     ];
 
-    enum Arm { Down, Up, Wave, Out, Think, Angry, Hold }
-    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed, AnnoyedRight, LookLeft, LookRight }
-    enum Mouth { Smile, Open, Small, Oh, Wavy, Cat, Pout }
+    enum Arm { Down, Up, Wave, Out, Think, Angry, Hold, Front, Type, Write }
+    enum Eyes { Open, Closed, Happy, Sleep, Up, Dizzy, Squeeze, Annoyed, AnnoyedRight, LookLeft, LookRight, Down, DownLeft, DownRight, Glow }
+    enum Mouth { Smile, Open, Small, Oh, Wavy, Cat, Pout, Tongue }
 
     // Brazo izquierdo en cada pose: esquina (en casillas del chibi) y filas; el derecho se espeja.
     static readonly Dictionary<Arm, (int X, int Y, string[] Rows)> Arms = new()
@@ -476,9 +478,26 @@ static class ChibiSprite
         public int Step { get; init; }
         /// <summary>Como Breathe, pero bajan también los brazos y la caja: el rebote del paso.</summary>
         public bool Bob { get; init; }
+        /// <summary>Lo que tiene en las manos, delante del cuerpo: se mueve con él.</summary>
+        public (string[] Shape, int X, int Y)[] Props { get; init; } = [];
+        /// <summary>Lo que va pegado a la cara (la lupa): se mueve con la cabeza.</summary>
+        public (string[] Shape, int X, int Y)[] Face { get; init; } = [];
+        /// <summary>De espaldas: la capucha por detrás, sin cara.</summary>
+        public bool Back { get; init; }
+        /// <summary>Cuánto se corre el chibi a un lado, en casillas.</summary>
+        public int Dx { get; init; }
+        /// <summary>Lo que queda detrás del chibi, en casillas del lienzo (la casita).</summary>
+        public (string[] Shape, int X, int Y)[] Behind { get; init; } = [];
+        /// <summary>Cabecea: la cabeza baja una casilla (con música).</summary>
+        public bool Nod { get; init; }
     }
 
-    sealed record Frame(char[][] Grid, int Ms);
+    sealed record Frame(char[][] Grid, int Ms)
+    {
+        public Pose? Pose { get; init; }
+        /// <summary>Dónde va la nota con música en cada tiempo, si no es en las esquinas de siempre.</summary>
+        public (int X, int Y)[]? Notes { get; init; }
+    }
 
     static readonly Dictionary<ChibiMove, Frame[]> Moves = BuildMoves();
     static readonly Dictionary<MascotFrame, char[][]> Heads = HeadEyes.Keys.ToDictionary(f => f, BuildHead);
@@ -527,12 +546,29 @@ static class ChibiSprite
         _ => ChibiMove.Think, // pregunta, permiso, reintento, uso alto y sesión vencida: algo que mirar
     };
 
+    /// <summary>El gesto del flujo de cada familia de herramientas (una pregunta ya respondida: pensar).</summary>
+    public static ChibiMove ForTool(ToolKind kind) => kind switch
+    {
+        ToolKind.Read => ChibiMove.Read,
+        ToolKind.Search => ChibiMove.Search,
+        ToolKind.Edit => ChibiMove.Edit,
+        ToolKind.Run => ChibiMove.Run,
+        ToolKind.Web => ChibiMove.Web,
+        ToolKind.Agent => ChibiMove.Agent,
+        ToolKind.Ask => ChibiMove.Ponder,
+        _ => ChibiMove.Tool,
+    };
+
+    /// <summary>Es un gesto del flujo (con música, cabecea al compás).</summary>
+    public static bool IsFlow(ChibiMove move) => move is >= ChibiMove.Read and <= ChibiMove.Tool;
+
     // ── Cuadros ─────────────────────────────────────────────────────────────────────────────
 
     static Dictionary<ChibiMove, Frame[]> BuildMoves()
     {
+        AddFlowShapes();
         var open = new Pose();
-        Frame F(Pose pose, int ms) => new(Compose(pose), ms);
+        Frame F(Pose pose, int ms) => new(Compose(pose), ms) { Pose = pose };
 
         var dance = new List<Frame>();
         foreach (var k in new[] { 0, 2 })
@@ -573,7 +609,7 @@ static class ChibiSprite
             return [F(walk with { Step = 1 }, 150), F(walk with { Bob = true }, 120), F(walk with { Step = 2 }, 150), F(walk with { Bob = true }, 120)];
         }
 
-        return new()
+        var moves = new Dictionary<ChibiMove, Frame[]>
         {
             [ChibiMove.Idle] =
             [
@@ -695,6 +731,8 @@ static class ChibiSprite
                 F(new() { Eyes = Eyes.Up, Mouth = Mouth.Oh, Crab = (1, 0) }, 600),
             ],
         };
+        AddFlowMoves(moves, F);
+        return moves;
     }
 
     /// <summary>En Throw, cuándo suelta la caja (ms desde que empieza).</summary>
@@ -712,13 +750,18 @@ static class ChibiSprite
 
     static char[][] Compose(Pose pose)
     {
-        var g = Mirror(Body);
-        g[21][20] = 'W'; g[21][21] = 'K'; // el brillo del ojo derecho, del mismo lado que el del izquierdo
-        SetEyes(g, pose.Eyes);
-        SetMouth(g, pose.Mouth);
-        SetCrab(g, pose.Crab);
+        var g = pose.Back ? BackBody() : Mirror(Body);
+        if (!pose.Back)
+        {
+            g[21][20] = 'W'; g[21][21] = 'K'; // el brillo del ojo derecho, del mismo lado que el del izquierdo
+            SetEyes(g, pose.Eyes);
+            SetMouth(g, pose.Mouth);
+            SetCrab(g, pose.Crab);
+        }
         if (pose.Cheeks) PuffCheeks(g);
+        foreach (var (shape, x, y) in pose.Face) Stamp(g, x, y, shape);
         ShiftHead(g, pose.Head);
+        if (pose.Nod) NodHead(g);
         if (pose.Left != Arm.Down || pose.Folded) RemoveArm(g, left: true);
         if (pose.Right != Arm.Down || pose.Folded) RemoveArm(g, left: false);
         if (pose.Folded) FoldArms(g);
@@ -730,9 +773,11 @@ static class ChibiSprite
         if (pose.Breathe || pose.Bob) Squash(g);
 
         var canvas = Blank(Columns, Rows);
-        Stamp(canvas, Ox, Oy + pose.Dy, g);
-        var bob = pose.Bob ? 1 : 0; // con el rebote bajan también los brazos y la caja
-        if (pose.Carrying) Stamp(canvas, Ox + BoxX, Oy + pose.Dy + BoxY + bob, Box);
+        foreach (var (shape, x, y) in pose.Behind) Stamp(canvas, x, y, shape);
+        var ox = Ox + pose.Dx;
+        Stamp(canvas, ox, Oy + pose.Dy, g);
+        var bob = pose.Bob ? 1 : 0; // con el rebote bajan también los brazos y lo que lleva en las manos
+        if (pose.Carrying) Stamp(canvas, ox + BoxX, Oy + pose.Dy + BoxY + bob, Box);
         foreach (var (arm, left) in new[] { (pose.Left, true), (pose.Right, false) })
         {
             if (arm == Arm.Down) continue;
@@ -742,12 +787,13 @@ static class ChibiSprite
                 x = 31 - x - (rows[0].Length - 1);
                 rows = [.. rows.Select(Reverse)];
             }
-            Stamp(canvas, Ox + x, Oy + pose.Dy + y + bob, rows);
+            Stamp(canvas, ox + x, Oy + pose.Dy + y + bob, rows);
         }
+        foreach (var (shape, x, y) in pose.Props) Stamp(canvas, ox + x, Oy + pose.Dy + y + bob, shape);
         if (pose.Maracas is { } shake)
             foreach (var (arm, left) in new[] { (pose.Left, true), (pose.Right, false) })
                 if (MaracaAt.TryGetValue((arm, left), out var at))
-                    Stamp(canvas, Ox + at.X, Oy + pose.Dy + at.Y - (left ? shake.Left : shake.Right), Maraca);
+                    Stamp(canvas, ox + at.X, Oy + pose.Dy + at.Y - (left ? shake.Left : shake.Right), Maraca);
         foreach (var (shape, x, y) in pose.Fx) Stamp(canvas, Ox + x, Oy + y, shape);
         return canvas;
     }
@@ -777,6 +823,7 @@ static class ChibiSprite
         if (eyes is Eyes.Up or Eyes.LookLeft or Eyes.LookRight) // el rabillo de las pestañas
             for (var y = 19; y <= 20; y++)
                 g[y][8] = g[y][23] = 'K';
+        if (eyes is Eyes.Down or Eyes.DownLeft or Eyes.DownRight or Eyes.Glow) g[20][8] = g[20][23] = 'K';
     }
 
     /// <summary>Cachetes inflados: más rubor y la cara una casilla más ancha a cada lado.</summary>
@@ -972,13 +1019,29 @@ static class ChibiSprite
 }
 
 /// <summary>
-/// Qué hace el chibi del escritorio: baila si alguna sesión trabaja, piensa si alguna espera su
-/// respuesta, se queda quieto si hay sesiones paradas y duerme si no hay ninguna. Un gesto (saludar,
+/// Qué hace la mascota del escritorio (el chibi o la clásica). Si alguna sesión pregunta o pide
+/// permiso, piensa enseguida. Con «Gestos del flujo», muestra lo que hace la sesión: gana lo que cambia
+/// cosas (editar, ejecutar, agentes), después lo que consulta (leer, buscar, web, otras herramientas) y
+/// al final pensar; dentro del mismo nivel, la sesión con el último paso. Cada gesto del flujo dura al
+/// menos una vuelta, para que se vean también los pasos de milisegundos, y cuando termina la otra
+/// herramienta festeja la casita. Sin el interruptor, baila mientras trabaja. Sin trabajo: baila si
+/// suena música, se queda quieta si hay sesiones y duerme si no hay ninguna. Un gesto (saludar,
 /// festejar, marearse) pasa por delante un rato. Cada movimiento nuevo empieza desde su primer cuadro.
 /// </summary>
 sealed class ChibiDirector
 {
+    /// <summary>Los interruptores de Ajustes: TrayApp le pasa los suyos.</summary>
+    public AppSettings Settings { get; set; } = new();
+
+    // Lo que piden las sesiones: el movimiento, si interrumpe enseguida (una pregunta o un permiso) y el paso que lo trae.
+    (ChibiMove Move, bool Urgent, string? Step) _wish = (ChibiMove.Sleep, false, null);
+    IReadOnlyList<SessionInfo> _sessions = [];
+    // Lo que muestra por las sesiones y desde cuándo, los pasos ya mostrados, el de la casita y hasta cuándo festeja.
     ChibiMove _state = ChibiMove.Sleep;
+    long _stateSince;
+    readonly HashSet<string> _shown = [];
+    string? _building;
+    long _builtUntil;
     ChibiMove? _mood;
     (ChibiMove Move, long Until)? _gesture;
     ChibiMove _current = ChibiMove.Sleep;
@@ -987,10 +1050,66 @@ sealed class ChibiDirector
     public void SetSessions(IEnumerable<SessionInfo> sessions)
     {
         var list = sessions.ToList();
-        _state = list.Any(s => s.State == SessionState.Working) ? ChibiMove.Dance
-            : list.Any(s => s.State == SessionState.Waiting) ? ChibiMove.Think
-            : list.Count > 0 ? ChibiMove.Idle
-            : ChibiMove.Sleep;
+        _sessions = list;
+        _shown.IntersectWith(list.SelectMany(s => s.Flow).Select(f => f.Id));
+        var working = list.Where(s => s.State == SessionState.Working).ToList();
+        if (list.Any(s => s.State == SessionState.Waiting)) _wish = (ChibiMove.Think, true, null);
+        else if (working.Count == 0) _wish = (list.Count > 0 || !Settings.SleepWithoutSessions ? ChibiMove.Idle : ChibiMove.Sleep, false, null);
+        else if (!Settings.FlowGestures) _wish = (ChibiMove.Dance, false, null);
+        else
+        {
+            var (move, _, step) = working.Select(Wish).OrderBy(w => Level(w.Move)).ThenByDescending(w => w.At).First();
+            _wish = (move, false, step);
+        }
+    }
+
+    /// <summary>El gesto de una sesión que trabaja: su último paso, mientras corre o si todavía no se vio; si no, pensando.</summary>
+    (ChibiMove Move, DateTimeOffset At, string? Step) Wish(SessionInfo session)
+    {
+        if (session.Flow.Count == 0) return (ChibiMove.Ponder, session.TurnStartedAt ?? DateTimeOffset.MinValue, null);
+        var last = session.Flow[^1];
+        var at = last.At ?? DateTimeOffset.MinValue;
+        return last.Done && _shown.Contains(last.Id) ? (ChibiMove.Ponder, at, null) : (ChibiSprite.ForTool(last.Kind), at, last.Id);
+    }
+
+    /// <summary>0 lo que cambia cosas, 1 lo que consulta, 2 pensar.</summary>
+    static int Level(ChibiMove move) => move switch
+    {
+        ChibiMove.Edit or ChibiMove.Run or ChibiMove.Agent => 0,
+        ChibiMove.Ponder => 2,
+        _ => 1,
+    };
+
+    /// <summary>Lo mínimo que se queda un gesto del flujo: una vuelta; la casita, que es larga, unos 3 s.</summary>
+    static long MinHold(ChibiMove move) => Math.Min(ChibiSprite.Length(move), 3200);
+
+    /// <summary>Lo que toca por las sesiones en este momento.</summary>
+    ChibiMove FromSessions(long now, bool music)
+    {
+        var (wish, urgent, step) = _wish;
+        if (music && wish is ChibiMove.Idle or ChibiMove.Sleep) wish = ChibiMove.Dance;
+        if (wish != _state && (urgent || !ChibiSprite.IsFlow(_state) || now - _stateSince >= MinHold(_state)))
+        {
+            // La otra herramienta terminó: la casita queda lista y festeja antes de pasar a lo siguiente.
+            if (_state == ChibiMove.Tool && !urgent && Finished(_building)) _builtUntil = now + ChibiSprite.Length(ChibiMove.Built);
+            _state = wish;
+            _stateSince = Math.Max(now, _builtUntil);
+        }
+        if (urgent) _builtUntil = 0;
+        if (step is not null && _state == wish)
+        {
+            _shown.Add(step);
+            if (wish == ChibiMove.Tool) _building = step;
+        }
+        return now < _builtUntil ? ChibiMove.Built : _state;
+    }
+
+    bool Finished(string? step) => step is not null && _sessions.SelectMany(s => s.Flow).FirstOrDefault(f => f.Id == step) is { Done: true };
+
+    /// <summary>Al aparecer en el escritorio: saluda, si está encendido.</summary>
+    public void Appear()
+    {
+        if (Settings.GreetOnAppear) Gesture(ChibiMove.Wave);
     }
 
     int _pokes;
@@ -1009,7 +1128,8 @@ sealed class ChibiDirector
 
     /// <summary>
     /// Un clic encima: saluda. Si lo siguen molestando (clics con menos de 4 s entre uno y otro), hace
-    /// puchero (3 a 5), cruza los brazos (6 a 8) y se pone rojo de furia (9 o más).
+    /// puchero (3 a 5), cruza los brazos (6 a 8) y se pone rojo de furia (9 o más). Con «Enojarse con
+    /// muchos clics» apagado, siempre saluda.
     /// </summary>
     public void Poke()
     {
@@ -1017,7 +1137,8 @@ sealed class ChibiDirector
         if (now - _lastPoke > 4000) _pokes = 0;
         _lastPoke = now;
         _pokes++;
-        var move = _pokes switch { <= 2 => ChibiMove.Wave, <= 5 => ChibiMove.Pout, <= 8 => ChibiMove.Sulk, _ => ChibiMove.Fury };
+        var move = !Settings.AngryOnClicks ? ChibiMove.Wave
+            : _pokes switch { <= 2 => ChibiMove.Wave, <= 5 => ChibiMove.Pout, <= 8 => ChibiMove.Sulk, _ => ChibiMove.Fury };
         Gesture(move, move == ChibiMove.Wave ? 2500 : 4000);
     }
 
@@ -1026,29 +1147,34 @@ sealed class ChibiDirector
 
     /// <summary>
     /// Al llegar un aviso hace el mismo gesto que el aviso (festeja, piensa, se marea, duerme, baila
-    /// chachachá) por unos segundos y después vuelve a lo que corresponda.
+    /// chachachá) por unos segundos y después vuelve a lo que corresponda (si «Gesto de los avisos» está encendido).
     /// </summary>
     public void Notice(NoticeKind kind)
     {
+        if (!Settings.NoticeGestures) return;
         var move = ChibiSprite.ForNotice(kind);
         Gesture(move, move == ChibiMove.Maracas ? 3600 : 3000); // el chachachá, tres vueltas
     }
 
-    /// <summary>El movimiento de ahora y cuánto lleva (ms), para ChibiSprite.Paint.</summary>
-    public (ChibiMove Move, long T) Now()
+    /// <summary>
+    /// El movimiento de ahora, cuánto lleva (ms) y si va con música (los gestos del flujo cabecean), para
+    /// ChibiSprite.Paint y ToastSprite.PaintMove.
+    /// </summary>
+    public (ChibiMove Move, long T, bool Music) Now()
     {
         var now = Environment.TickCount64;
         if (_gesture is { } g && now >= g.Until)
             _gesture = g.Move is ChibiMove.Pout or ChibiMove.Sulk or ChibiMove.Fury
                 ? (ChibiMove.Calm, now + ChibiSprite.Length(ChibiMove.Calm)) // se calma antes de volver a lo suyo
                 : null;
-        var move = _gesture?.Move ?? _mood ?? _state;
+        var music = Settings.DanceToMusic && Music.IsPlaying;
+        var move = _gesture?.Move ?? _mood ?? FromSessions(now, music);
         if (move != _current)
         {
             _current = move;
             _since = now;
         }
-        return (move, now - _since);
+        return (move, now - _since, music && ChibiSprite.IsFlow(move));
     }
 }
 
